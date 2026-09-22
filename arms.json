@@ -1,0 +1,10 @@
+{
+  "E0_frozen":  {"arm": "E0", "depth": "frozen", "epochs": 8},
+  "E0_full":    {"arm": "E0", "depth": "full",   "epochs": 5},
+  "E1_frozen":  {"arm": "E1", "depth": "frozen", "epochs": 8, "pos_weight": 7.5},
+  "E1_full":    {"arm": "E1", "depth": "full",   "epochs": 5, "pos_weight": 7.5},
+  "E2_frozen":  {"arm": "E2", "depth": "frozen", "epochs": 8},
+  "E2_full":    {"arm": "E2", "depth": "full",   "epochs": 5},
+  "E3_frozen":  {"arm": "E3", "depth": "frozen", "epochs": 8, "gamma": 2.0},
+  "E3_full":    {"arm": "E3", "depth": "full",   "epochs": 5, "gamma": 2.0}
+}
