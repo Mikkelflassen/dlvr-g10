@@ -107,7 +107,6 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     cfg.update({"run": name, "git": _git_hash(), "best_inner_auroc": best_auc,
                 "minutes": round((time.time() - t0) / 60, 2)})
     (out / "config.json").write_text(json.dumps(cfg, indent=2))
-    if cfg["depth"] == "frozen":
-        (out / "best.pt").unlink()  # cheap to retrain, not worth the storage
+    (out / "best.pt").unlink()  # answers are in preds.csv; model not needed after
     print(f"{name}: best inner AUROC {best_auc:.4f}  ({cfg['minutes']} min)")
     return out
