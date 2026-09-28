@@ -10,6 +10,10 @@ from PIL import Image
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
+# What every run used before augmentation became configurable. A run that passes
+# no `aug` dict gets exactly this, so earlier results stay comparable.
+DEFAULT_AUG = {"scale": [0.8, 1.0], "hflip": True, "vflip": True, "rotate": 0}
+
 
 def load_splits(splits_dir, data_root):
     """dev (with fold 0-4) and test, with an absolute `path` column."""
@@ -36,11 +40,21 @@ def inner_split(dev, test_fold, val_frac=0.15, seed=42):
             trn[trn.patient_id.isin(val_pats)].reset_index(drop=True))
 
 
-def make_transform(train, augment=False):
+def make_transform(train, augment=False, aug=None):
+    """aug: optional dict overriding DEFAULT_AUG.
+
+    keys: scale [lo, hi] for RandomResizedCrop, hflip/vflip bools, rotate degrees.
+    Colour is deliberately never touched — colour variegation is diagnostic.
+    """
     if train and augment:
-        t = [transforms.RandomResizedCrop(256, scale=(0.8, 1.0)),
-             transforms.RandomHorizontalFlip(),
-             transforms.RandomVerticalFlip()]
+        a = dict(DEFAULT_AUG, **(aug or {}))
+        t = [transforms.RandomResizedCrop(256, scale=tuple(a["scale"]))]
+        if a["hflip"]:
+            t.append(transforms.RandomHorizontalFlip())
+        if a["vflip"]:
+            t.append(transforms.RandomVerticalFlip())
+        if a["rotate"]:
+            t.append(transforms.RandomRotation(a["rotate"]))
     else:
         t = []  # images are already 256x256
     return transforms.Compose(t + [transforms.ToTensor(),
@@ -61,10 +75,10 @@ class ISICDataset(Dataset):
         return self.transform(img), self.labels[i]
 
 
-def make_loader(df, batch_size=64, train=False, augment=False,
+def make_loader(df, batch_size=64, train=False, augment=False, aug=None,
                 balanced=False, workers=2):
     """balanced=True is E2: oversample malignant to a 50/50 effective prior."""
-    ds = ISICDataset(df, make_transform(train, augment))
+    ds = ISICDataset(df, make_transform(train, augment, aug))
     if train and balanced:
         counts = df.target.value_counts()
         w = df.target.map(lambda y: 1.0 / counts[y]).values
