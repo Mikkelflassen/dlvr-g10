@@ -45,7 +45,7 @@ def make_transform(train, augment=False):
     """
     if train and augment:
         t = [
-            transforms.RandomResizedCrop(256, scale=(0.7, 1.0)),
+            transforms.RandomResizedCrop(256, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
         ]
