@@ -38,9 +38,8 @@ def predict(model, loader, device):
 
 def run(cfg, splits_dir, data_root, runs_dir, device=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
-                 pos_weight (E1), gamma (E3), balanced (E2), augment, aug, lr, tag
+                 pos_weight (E1), gamma (E3), balanced (E2), augment, lr, tag
 
-    `aug` is an optional dict of augmentation settings (see data.DEFAULT_AUG).
     `tag` appends to the run folder name, so the same arm/fold/seed can be run
     more than once with different settings without overwriting itself.
     """
@@ -50,7 +49,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     cfg.setdefault("epochs", 5)
     cfg.setdefault("batch_size", 64)
     cfg.setdefault("lr", default_lr(cfg["depth"]))
-    cfg.setdefault("augment", cfg["depth"] == "full")
+    cfg.setdefault("augment", True)
     cfg.setdefault("balanced", cfg["arm"] == "E2")
 
     torch.manual_seed(cfg["seed"])
@@ -67,8 +66,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
 
     tr_loader = make_loader(tr, cfg["batch_size"], train=True,
-                            augment=cfg["augment"], aug=cfg.get("aug"),
-                            balanced=cfg["balanced"])
+                            augment=cfg["augment"], balanced=cfg["balanced"])
     val_loader = make_loader(inner_val, cfg["batch_size"])
     held_loader = make_loader(held, cfg["batch_size"])
 
