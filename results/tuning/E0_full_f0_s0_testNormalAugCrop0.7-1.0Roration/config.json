@@ -1,0 +1,16 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 5,
+  "fold": 0,
+  "seed": 0,
+  "tag": "testNormalAugCrop0.7-1.0Roration",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "balanced": false,
+  "run": "E0_full_f0_s0_testNormalAugCrop0.7-1.0Roration",
+  "git": "cfb3d0b",
+  "best_inner_auroc": 0.8765829408686552,
+  "minutes": 8.07
+}
