@@ -52,6 +52,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     np.random.seed(cfg["seed"])
 
     name = f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}"
+    if cfg.get("tag"):
+        name += "_" + cfg["tag"]
     out = Path(runs_dir) / name
     out.mkdir(parents=True, exist_ok=True)
 
