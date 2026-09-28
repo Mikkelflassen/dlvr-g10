@@ -70,7 +70,7 @@ class ISICDataset(Dataset):
 
 
 def make_loader(df, batch_size=64, train=False, augment=False,
-                balanced=False, workers=8):
+                balanced=False, workers=2):
     """balanced=True is E2: oversample malignant to a 50/50 effective prior."""
     ds = ISICDataset(df, make_transform(train, augment))
     if train and balanced:
