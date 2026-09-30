@@ -82,16 +82,22 @@ session.
 
 ## Measured so far
 
-Two baseline runs on fold 0, seed 0, T4 GPU:
+Pilot runs live in `results/tuning/` (fold 0, seed 0, T4 GPU). None of them
+is part of the grid; `results/runs/` is empty until augmentation is locked.
 
-| Run | Best inner AUROC | Peak at | Time |
-|-----|------------------|---------|------|
-| `E0_frozen_f0_s0` | 0.805 | epoch 6 (plateau from ~3) | 7.6 min |
-| `E0_full_f0_s0` | 0.871 | epoch 2, declines after | 8.5 min |
+| Run | Augmentation | Best inner AUROC | Peak at |
+|-----|--------------|------------------|---------|
+| `E0_frozen_f0_s0_noaug` | none | 0.805 | epoch 6 (plateau from ~3) |
+| `E0_full_f0_s0_crop0.8` | crop 0.8–1.0 + flips | 0.871 | epoch 2, declines after |
+| `E0_full_f0_s0_crop0.7` | crop 0.7–1.0 + flips | 0.877 | epoch 2 |
+| `E0_full_f0_s0_crop0.5` | crop 0.5–1.0 + flips | 0.865 | epoch 4 |
 
-The epoch counts in `arms.json` — 8 frozen, 5 full — were guesses and both
-check out: frozen is still inching up at the end, full turns over at epoch 2
-and the extra epochs are what prove it. Leave them alone.
+The epoch counts in `arms.json` — 8 frozen, 5 full — check out: frozen is
+still inching up at the end, full turns over at epoch 2. Leave them alone.
+
+Inner val has only ~50 malignant images, so a single run's AUROC is ±0.02–0.03
+(bootstrap). The three crop ranges are indistinguishable; compare augmentation
+variants on at least two folds or seeds.
 
 `pos_weight: 7.5` (E1) and `gamma: 2.0` (E3) are still guesses. Each is the
 owner's job to fix on inner validation before their real runs.
@@ -123,7 +129,8 @@ configs/    arms.json
 notebooks/  G10_run.ipynb
 splits/     dev_split.csv  test_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py
-results/    runs/<arm>_<depth>_f<fold>_s<seed>/
+results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
+            tuning/<arm>_<depth>_f<fold>_s<seed>_<tag>/  pilots and augmentation tests
 ```
 
 Still to come: `notebooks/G10_analysis.ipynb` (reads every `preds.csv`, builds
