@@ -1,0 +1,17 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 8,
+  "fold": 0,
+  "seed": 0,
+  "tag": "geo",
+  "aug": "geo",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "balanced": false,
+  "run": "E0_full_f0_s0_geo",
+  "git": "4054f64",
+  "best_inner_auroc": 0.8802027211045458,
+  "minutes": 14.09
+}
