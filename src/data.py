@@ -29,7 +29,7 @@ def load_splits(splits_dir, data_root):
     return out
 
 
-def inner_split(dev, test_fold, val_frac=0.15, seed=42):
+def inner_split(dev, test_fold, val_frac=0.2, seed=42):
     """Training folds -> (train, inner_val), grouped by patient.
 
     inner_val is used for epoch selection, threshold tuning and arm settings.
@@ -37,7 +37,7 @@ def inner_split(dev, test_fold, val_frac=0.15, seed=42):
 
     Library: sklearn.model_selection.StratifiedGroupKFold — every patient stays on
     one side and the malignant rate is kept equal on both. One of round(1/val_frac)
-    parts becomes inner_val (7 parts, so 14%, for the default).
+    parts becomes inner_val (5 parts, so 20%, for the default).
       https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html
     Why patients must not be split (ISIC 2020): C. Deotte, "Triple Stratified KFold",
       https://www.kaggle.com/code/cdeotte/triple-stratified-kfold-with-tfrecords
