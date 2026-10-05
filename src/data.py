@@ -51,29 +51,90 @@ def inner_split(dev, test_fold, val_frac=0.2, seed=42):
             trn.iloc[val_idx].reset_index(drop=True))
 
 
-def make_transform(train, augment=False):
+# The augmentation ladder: each step keeps everything from the steps before it.
+AUG_STEPS = ["base", "geo", "light", "colour", "cutout"]
+
+
+def _transpose(img):
+    """Swap rows and columns (a flip along the diagonal)."""
+    return img.transpose(Image.TRANSPOSE)
+
+
+def make_transform(train, augment=False, aug="base"):
     """EDIT THE TRAINING AUGMENTATION HERE — this is the only place it lives.
 
     Applies to training images only; validation and test are never augmented.
-    Colour is deliberately left alone: colour variegation is diagnostic for
-    melanoma, so a hue or saturation shift can contradict the label.
 
-    Adapted from `data_transforms` in the PyTorch transfer learning tutorial
+    `aug` picks a step on a ladder; each step adds one group to the previous one:
+      base    crop + flips                        what a lesion looks like at other scales
+      geo     + transpose, shift / scale / rotate a lesion has no "up"
+      light   + brightness, contrast              cameras and lighting differ
+      colour  + hue, saturation                   tests whether colour should be left alone:
+                                                  colour variegation is diagnostic for melanoma,
+                                                  so a colour shift may contradict the label
+      cutout  + one erased square                 hair, rulers and ink cover parts of a lesion
+
+    base is adapted from `data_transforms` in the PyTorch transfer learning tutorial
     (BSD-3-Clause): RandomResizedCrop + RandomHorizontalFlip + ToTensor + Normalize.
       https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py
-    The vertical flip is from the ISIC 2020 winning solution (Ha et al., 2020, MIT):
+    Every other step takes its operations, strengths and probabilities from
+    `get_transforms` in the ISIC 2020 winning solution (Ha et al., 2020, MIT):
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
+      https://arxiv.org/abs/2010.05351
+    They use albumentations; we use the torchvision equivalents, so the mapping is
+    close but not exact (noted per line). Not used from their list: blur / noise,
+    optical / grid / elastic distortion and CLAHE.
+      https://docs.pytorch.org/vision/stable/transforms.html
+    Cutout: DeVries & Taylor (2017), https://arxiv.org/abs/1708.04552
     """
+    if aug not in AUG_STEPS:
+        raise ValueError(f"aug must be one of {AUG_STEPS}, got {aug!r}")
+    level = AUG_STEPS.index(aug)
+
+    before, after = [], []  # applied to the PIL image / to the tensor
     if train and augment:
-        t = [
+        # base
+        before += [
             transforms.RandomResizedCrop(256, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
+            transforms.RandomVerticalFlip(),   # Ha et al.: VerticalFlip(p=0.5)
         ]
-    else:
-        t = []  # images are already 256x256
-    return transforms.Compose(t + [transforms.ToTensor(),
-                                   transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
+        if level >= 1:  # geo
+            before += [
+                # Ha et al.: Transpose(p=0.5)
+                transforms.RandomApply([transforms.Lambda(_transpose)], p=0.5),
+                # Ha et al.: ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1,
+                #                             rotate_limit=15, border_mode=0, p=0.85)
+                transforms.RandomApply([transforms.RandomAffine(
+                    degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1))], p=0.85),
+            ]
+        if level >= 2:  # light
+            before += [
+                # Ha et al.: RandomBrightness(limit=0.2, p=0.75)
+                transforms.RandomApply([transforms.ColorJitter(brightness=0.2)], p=0.75),
+                # Ha et al.: RandomContrast(limit=0.2, p=0.75)
+                transforms.RandomApply([transforms.ColorJitter(contrast=0.2)], p=0.75),
+            ]
+        if level >= 3:  # colour
+            before += [
+                # Ha et al.: HueSaturationValue(hue_shift_limit=10, sat_shift_limit=20,
+                #                               val_shift_limit=10, p=0.5)
+                # Their limits are on OpenCV's scale (hue 0-180, the others 0-255):
+                # 10/180 = 0.056 of the hue circle, 20/255 = 0.08, 10/255 = 0.04.
+                # torchvision scales saturation and value instead of shifting them.
+                transforms.RandomApply([transforms.ColorJitter(
+                    brightness=0.04, saturation=0.08, hue=0.056)], p=0.5),
+            ]
+        if level >= 4:  # cutout
+            after += [
+                # Ha et al.: Cutout(max_h_size=0.375 * size, max_w_size=0.375 * size,
+                #                   num_holes=1, p=0.7)
+                # One black square with side 0.375 of the image = 14% of its area.
+                transforms.RandomErasing(p=0.7, scale=(0.14, 0.14), ratio=(1.0, 1.0), value=0),
+            ]
+    # images are already 256x256, so nothing else is needed without augmentation
+    return transforms.Compose(before + [transforms.ToTensor()] + after
+                              + [transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
 
 class ISICDataset(Dataset):
@@ -101,9 +162,9 @@ class ISICDataset(Dataset):
 
 
 def make_loader(df, batch_size=64, train=False, augment=False,
-                balanced=False, workers=2):
+                balanced=False, workers=2, aug="base"):
     """balanced=True is E2: oversample malignant to a 50/50 effective prior."""
-    ds = ISICDataset(df, make_transform(train, augment))
+    ds = ISICDataset(df, make_transform(train, augment, aug))
     if train and balanced:
         # Adapted from ptrblck's answer in the PyTorch forum thread
         # "How to handle imbalanced classes" (post 2):
