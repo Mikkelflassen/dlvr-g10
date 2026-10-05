@@ -16,6 +16,12 @@ treatments for a ~56:1 class imbalance at two fine-tuning depths.
 E0b is post-hoc: it reuses E0's saved `preds.csv` and moves the decision
 threshold, so it has no entry in `arms.json` and never trains.
 
+Every trained arm (E0–E3) is scored at threshold 0.5. E0b is E0 scored at the
+threshold with the best F1 on inner validation. So E0 and E0b share AUROC,
+AUPRC and ECE and differ only in recall, precision and F1 — E0b shows how much
+of an arm's gain a threshold move alone would give. `eval.build_results` adds
+the E0b rows automatically.
+
 ## Rules
 
 1. **`splits/dev_split.csv` and `splits/test_split.csv` are canonical.** Never

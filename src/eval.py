@@ -40,31 +40,35 @@ def ece(y, p, n_bins=15):
     return float(ece)
 
 
-def best_threshold(y, p, metric="f1"):
-    """Tuned on inner_val ONLY. Tuning it on the held fold would break the comparison.
+def best_threshold(y, p):
+    """The threshold with the highest F1. Tuned on inner_val ONLY — tuning it on
+    the held fold would break the comparison.
 
     Library: sklearn.metrics.precision_recall_curve gives precision and recall at
-    every candidate threshold; we take the one with the highest F1 (or recall).
+    every candidate threshold.
       https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_curve.html
       https://scikit-learn.org/stable/modules/classification_threshold.html
     """
     precision, recall, thresholds = precision_recall_curve(y, p)
     precision, recall = precision[:-1], recall[:-1]  # last point has no threshold
-    if metric == "f1":
-        scores = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
-    else:
-        scores = recall
-    return float(thresholds[int(np.argmax(scores))])
+    f1 = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
+    return float(thresholds[int(np.argmax(f1))])
 
 
-def score_run(run_dir, threshold=None):
+def score_run(run_dir, threshold=0.5):
+    """One run -> one row of metrics on the held-out fold.
+
+    threshold: a number (default 0.5, used for every trained arm) or "tuned"
+    (best F1 on inner_val; this is what E0b uses). AUROC, AUPRC and ECE do not
+    depend on the threshold; recall, precision and F1 do.
+    """
     run_dir = Path(run_dir)
     cfg = json.loads((run_dir / "config.json").read_text())
     preds = pd.read_csv(run_dir / "preds.csv")
 
     inner = preds[preds.split == "inner_val"]
     held = preds[preds.split == "held_fold"]
-    if threshold is None:
+    if threshold == "tuned":
         threshold = best_threshold(inner.target.values, inner.prob.values)
 
     y, p = held.target.values, held.prob.values
@@ -83,9 +87,19 @@ def score_run(run_dir, threshold=None):
 
 
 def build_results(runs_dir, out_csv=None):
-    """Every run folder -> one table. This is what the report's results section uses."""
-    rows = [score_run(d) for d in sorted(Path(runs_dir).iterdir())
-            if (d / "preds.csv").exists()]
+    """Every run folder -> one table. This is what the report's results section uses.
+
+    Each trained run gives one row at threshold 0.5. Each E0 run gives a second
+    row, arm "E0b": the same predictions with the threshold tuned on inner_val.
+    """
+    rows = []
+    for d in sorted(Path(runs_dir).iterdir()):
+        if not (d / "preds.csv").exists():
+            continue
+        row = score_run(d)
+        rows.append(row)
+        if row["arm"] == "E0":
+            rows.append(score_run(d, threshold="tuned") | {"arm": "E0b"})
     df = pd.DataFrame(rows)
     if out_csv:
         df.to_csv(out_csv, index=False)
@@ -98,7 +112,7 @@ def summarise(results):
             .agg(["mean", "std"]).round(4))
 
 
-def e0b(runs_dir, depth, fold, seed=0, metric="recall"):
-    """E0b: E0's model, thresholded for recall instead of 0.5. No training."""
+def e0b(runs_dir, depth, fold, seed=0):
+    """E0b: E0's model with the threshold tuned on inner_val instead of 0.5. No training."""
     return score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}",
-                     threshold=None) | {"arm": "E0b"}
+                     threshold="tuned") | {"arm": "E0b"}
