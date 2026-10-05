@@ -72,9 +72,10 @@ dropped explicitly.
 1. Open `notebooks/G10_run.ipynb` in Colab (colab.research.google.com →
    GitHub tab → paste this repo's URL).
 2. Runtime → Change runtime type → **T4 GPU**.
-3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG` — and nothing else. Leave `TAG`
-   empty for a real grid run; give it a name (e.g. `"rot180"`) for a test run,
-   which is then saved in `results/tuning/` instead of `results/runs/`.
+3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG`, `AUG` — and nothing else. For a
+   real grid run leave `TAG` and `AUG` empty. For a test run give `TAG` a name
+   (e.g. `"geo"`); it is then saved in `results/tuning/` instead of
+   `results/runs/`. `AUG` picks an augmentation step for a test run.
 4. Run the cells top to bottom. The last cell commits and pushes the results.
 
 `ARM` is a key from `configs/arms.json`: `E0`/`E1`/`E2`/`E3` × `frozen`/`full`.
@@ -112,6 +113,31 @@ owner's job to fix on inner validation before their real runs.
 
 Budget: ~13.5 minutes per full run and ~8 per frozen run, 40 runs, so roughly
 7 GPU hours split three ways.
+
+## Augmentation test
+
+Before the grid, one augmentation is chosen and locked. `make_transform` in
+`src/data.py` has a ladder of five steps; each keeps everything before it:
+
+| `AUG` | Adds | Why |
+|-------|------|-----|
+| `base` | crop + flips | lesions appear at different scales |
+| `geo` | transpose, shift / scale / rotate | a lesion has no "up" |
+| `light` | brightness, contrast | cameras and lighting differ |
+| `colour` | hue, saturation | tests whether colour should be left alone |
+| `cutout` | one erased square | hair, rulers and ink cover parts of a lesion |
+
+Operations and strengths from `geo` upwards are those of the ISIC 2020 winning
+solution (Ha et al., 2020), implemented with torchvision.
+
+Protocol:
+
+1. `E0_full` only, so the choice cannot favour one of the treatments.
+2. Folds 0 and 1 for every step, `TAG` = the step name.
+3. Compare the mean best inner-validation AUROC, and the `val_loss` curves in
+   `history.csv` for overfitting. The held-out fold is not used for this choice.
+4. Pick the simplest step whose mean AUROC is within noise (±0.02) of the best.
+5. Lock it: change the default `aug` in `src/train.py`, then leave it alone.
 
 ## The grid
 
@@ -156,7 +182,7 @@ Each function names its source in a comment; this is the full list.
 | Where | Source | Licence |
 |-------|--------|---------|
 | `models.py`; training loop and augmentation base in `train.py`, `data.py` | S. Chilamkurthy, [Transfer Learning for Computer Vision Tutorial](https://docs.pytorch.org/tutorials/beginner/transfer_learning_tutorial.html) ([code](https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py)) | BSD-3-Clause |
-| `ISICDataset`, `set_seed`, `predict`, fold handling, best epoch by AUROC | Ha, Liu & Liu (2020), [ISIC 2020 1st-place solution](https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution), [paper](https://arxiv.org/abs/2010.05351) | MIT |
+| `ISICDataset`, `set_seed`, `val_epoch` / `predict`, fold handling, best epoch by AUROC, augmentation steps `geo`–`cutout` (operations and strengths) | Ha, Liu & Liu (2020), [ISIC 2020 1st-place solution](https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution), [paper](https://arxiv.org/abs/2010.05351) | MIT |
 | `ece` in `eval.py` | G. Pleiss, [temperature_scaling](https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py), code for Guo et al. (2017) | MIT |
 | Balanced sampler weights in `data.py` | ptrblck, PyTorch forum, [How to handle imbalanced classes](https://discuss.pytorch.org/t/how-to-handle-imbalanced-classes/11264) | forum post |
 
@@ -174,6 +200,7 @@ Each function names its source in a comment; this is the full list.
 
 **Methods and workflow**
 
+- Cutout: DeVries & Taylor (2017), [arXiv:1708.04552](https://arxiv.org/abs/1708.04552).
 - Focal loss: Lin et al. (2017), [arXiv:1708.02002](https://arxiv.org/abs/1708.02002). Focal loss and calibration: Mukhoti et al. (2020), [arXiv:2002.09437](https://arxiv.org/abs/2002.09437).
 - Expected calibration error: Guo et al. (2017), [arXiv:1706.04599](https://arxiv.org/abs/1706.04599).
 - ResNet: He et al. (2016), [arXiv:1512.03385](https://arxiv.org/abs/1512.03385). Adam: Kingma & Ba (2015), [arXiv:1412.6980](https://arxiv.org/abs/1412.6980).
