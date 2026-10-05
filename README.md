@@ -72,7 +72,9 @@ dropped explicitly.
 1. Open `notebooks/G10_run.ipynb` in Colab (colab.research.google.com →
    GitHub tab → paste this repo's URL).
 2. Runtime → Change runtime type → **T4 GPU**.
-3. Edit cell 4 — `ARM`, `FOLD`, `SEED` — and nothing else.
+3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG` — and nothing else. Leave `TAG`
+   empty for a real grid run; give it a name (e.g. `"rot180"`) for a test run,
+   which is then saved in `results/tuning/` instead of `results/runs/`.
 4. Run the cells top to bottom. The last cell commits and pushes the results.
 
 `ARM` is a key from `configs/arms.json`: `E0`/`E1`/`E2`/`E3` × `frozen`/`full`.
