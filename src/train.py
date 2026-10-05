@@ -49,11 +49,31 @@ def set_seed(seed=0):
     torch.backends.cudnn.deterministic = True
 
 
-def predict(model, loader, device):
-    """Adapted from [H] `val_epoch`: collect probabilities over the whole loader.
+def val_epoch(model, loader, criterion, device):
+    """Adapted from [H] `val_epoch`: loss and probabilities over the whole loader.
 
-    Changes: sigmoid on one logit instead of softmax, no test-time augmentation.
+    Changes: sigmoid on one logit instead of softmax, no test-time augmentation,
+    and the loss is averaged per image instead of per batch.
     """
+    model.eval()
+    val_loss = 0.0
+    PROBS = []
+    with torch.no_grad():
+        for (data, target) in loader:
+            data, target = data.to(device), target.to(device)
+            logits = model(data).squeeze(1)
+            probs = logits.sigmoid()
+            PROBS.append(probs.detach().cpu())
+
+            loss = criterion(logits, target)
+            val_loss += loss.item() * data.size(0)
+
+    PROBS = torch.cat(PROBS).numpy()
+    return val_loss / len(PROBS), PROBS
+
+
+def predict(model, loader, device):
+    """Probabilities only — the same loop as `val_epoch` without the loss."""
     model.eval()
     PROBS = []
     with torch.no_grad():
@@ -67,7 +87,7 @@ def predict(model, loader, device):
 
 def run(cfg, splits_dir, data_root, runs_dir, device=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
-                 pos_weight (E1), gamma / alpha (E3), balanced (E2), augment, lr, tag
+                 pos_weight (E1), gamma / alpha (E3), balanced (E2), augment, aug, lr, tag
 
     `tag` appends to the run folder name, so the same arm/fold/seed can be run
     more than once with different settings without overwriting itself.
@@ -79,6 +99,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     cfg.setdefault("batch_size", 64)
     cfg.setdefault("lr", default_lr(cfg["depth"]))
     cfg.setdefault("augment", True)
+    cfg.setdefault("aug", "base")   # step on the augmentation ladder, see data.make_transform
     cfg.setdefault("balanced", cfg["arm"] == "E2")
 
     set_seed(cfg["seed"])
@@ -95,7 +116,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
-                               augment=cfg["augment"], balanced=cfg["balanced"])
+                               augment=cfg["augment"], balanced=cfg["balanced"],
+                               aug=cfg["aug"])
     val_loader = make_loader(inner_val, cfg["batch_size"])
     held_loader = make_loader(held, cfg["batch_size"])
 
@@ -146,14 +168,17 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 n_seen += inputs.size(0)
 
             epoch_loss = running_loss / n_seen
-            val_probs = predict(model, val_loader, device)
+            # val_loss uses this arm's own loss, so compare it only within an arm.
+            # train_loss is measured on augmented images, val_loss on clean ones.
+            val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
             val_auc = roc_auc_score(inner_val.target, val_probs)
 
             history.append({"epoch": epoch,
                             "train_loss": float(epoch_loss),
+                            "val_loss": float(val_loss),
                             "val_auroc": float(val_auc),
                             "minutes": round((time.time() - since) / 60, 2)})
-            print(f"  epoch {epoch}  loss {epoch_loss:.4f}  val AUROC {val_auc:.4f}")
+            print(f"  epoch {epoch}  loss {epoch_loss:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
 
             # keep the best epoch
             if val_auc > best_auc:
