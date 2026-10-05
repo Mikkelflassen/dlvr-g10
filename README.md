@@ -90,26 +90,18 @@ session.
 
 ## Measured so far
 
-Pilot runs live in `results/tuning/` (fold 0, seed 0, T4 GPU). None of them
-is part of the grid; `results/runs/` is empty until augmentation is locked.
+`results/tuning/` and `results/runs/` are empty: all pilot runs were deleted on
+5 October when the inner validation split and the epoch count changed. They are
+still in the git history.
 
-| Run | Augmentation | Best inner AUROC | Peak at |
-|-----|--------------|------------------|---------|
-| `E0_frozen_f0_s0_noaug` | none | 0.805 | epoch 6 (plateau from ~3) |
-| `E0_full_f0_s0_crop0.8` | crop 0.8–1.0 + flips | 0.871 | epoch 2, declines after |
-| `E0_full_f0_s0_crop0.7` | crop 0.7–1.0 + flips | 0.877 | epoch 2 |
-| `E0_full_f0_s0_crop0.5` | crop 0.5–1.0 + flips | 0.865 | epoch 4 |
+What the pilots showed (`E0_full`, fold 0, T4 GPU):
 
-The epoch counts in `arms.json` — 8 frozen, 5 full — check out: frozen is
-still inching up at the end, full turns over at epoch 2. Leave them alone.
-
-Inner val has only ~50 malignant images, so a single run's AUROC is ±0.02–0.03
-(bootstrap). The three crop ranges are indistinguishable; compare augmentation
-variants on at least two folds or seeds.
-
-These pilots used an earlier inner-validation split (unstratified). The split
-is now patient-grouped *and* stratified, so their inner AUROC is not directly
-comparable with newer runs — rerun the baseline before comparing.
+- Validation AUROC rises until about epoch 4, is flat (0.85–0.87) through
+  epoch 8, and drops after that while training loss keeps falling. Hence
+  8 epochs for every arm in `arms.json`.
+- One epoch of full fine-tuning takes about 1.7 minutes, so a run is ~13.5 min.
+- Inner validation has ~80 malignant images, so a single run's AUROC still moves
+  by about ±0.02. Compare augmentation variants on at least two folds or seeds.
 
 E3 uses `torchvision.ops.sigmoid_focal_loss`. Its two knobs are set per arm in
 `arms.json`: `gamma` (focusing, default 2.0) and optionally `alpha` (class
@@ -118,7 +110,8 @@ weight, default -1 = off).
 `pos_weight: 7.5` (E1) and `gamma: 2.0` (E3) are still guesses. Each is the
 owner's job to fix on inner validation before their real runs.
 
-Budget: ~8 minutes per run, 40 runs, so roughly 5–6 GPU hours split three ways.
+Budget: ~13.5 minutes per full run and ~8 per frozen run, 40 runs, so roughly
+7 GPU hours split three ways.
 
 ## The grid
 
