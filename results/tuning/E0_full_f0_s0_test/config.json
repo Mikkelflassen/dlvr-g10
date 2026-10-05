@@ -1,0 +1,16 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 5,
+  "fold": 0,
+  "seed": 0,
+  "tag": "test",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "balanced": false,
+  "run": "E0_full_f0_s0_test",
+  "git": "a807709",
+  "best_inner_auroc": 0.8616535032148819,
+  "minutes": 8.95
+}
