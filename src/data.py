@@ -52,7 +52,7 @@ def inner_split(dev, test_fold, val_frac=0.2, seed=42):
 
 
 # The augmentation ladder: each step keeps everything from the steps before it.
-AUG_STEPS = ["base", "geo", "light", "colour", "cutout"]
+AUG_STEPS = ["none", "base", "geo", "light", "colour", "cutout"]
 
 
 def _transpose(img):
@@ -66,6 +66,7 @@ def make_transform(train, augment=False, aug="base"):
     Applies to training images only; validation and test are never augmented.
 
     `aug` picks a step on a ladder; each step adds one group to the previous one:
+      none    nothing                             the control: what augmentation adds at all
       base    crop + flips                        what a lesion looks like at other scales
       geo     + transpose, shift / scale / rotate a lesion has no "up"
       light   + brightness, contrast              cameras and lighting differ
@@ -92,14 +93,14 @@ def make_transform(train, augment=False, aug="base"):
     level = AUG_STEPS.index(aug)
 
     before, after = [], []  # applied to the PIL image / to the tensor
-    if train and augment:
+    if train and augment and level >= 1:
         # base
         before += [
             transforms.RandomResizedCrop(256, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),   # Ha et al.: VerticalFlip(p=0.5)
         ]
-        if level >= 1:  # geo
+        if level >= 2:  # geo
             before += [
                 # Ha et al.: Transpose(p=0.5)
                 transforms.RandomApply([transforms.Lambda(_transpose)], p=0.5),
@@ -108,14 +109,14 @@ def make_transform(train, augment=False, aug="base"):
                 transforms.RandomApply([transforms.RandomAffine(
                     degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1))], p=0.85),
             ]
-        if level >= 2:  # light
+        if level >= 3:  # light
             before += [
                 # Ha et al.: RandomBrightness(limit=0.2, p=0.75)
                 transforms.RandomApply([transforms.ColorJitter(brightness=0.2)], p=0.75),
                 # Ha et al.: RandomContrast(limit=0.2, p=0.75)
                 transforms.RandomApply([transforms.ColorJitter(contrast=0.2)], p=0.75),
             ]
-        if level >= 3:  # colour
+        if level >= 4:  # colour
             before += [
                 # Ha et al.: HueSaturationValue(hue_shift_limit=10, sat_shift_limit=20,
                 #                               val_shift_limit=10, p=0.5)
@@ -125,7 +126,7 @@ def make_transform(train, augment=False, aug="base"):
                 transforms.RandomApply([transforms.ColorJitter(
                     brightness=0.04, saturation=0.08, hue=0.056)], p=0.5),
             ]
-        if level >= 4:  # cutout
+        if level >= 5:  # cutout
             after += [
                 # Ha et al.: Cutout(max_h_size=0.375 * size, max_w_size=0.375 * size,
                 #                   num_holes=1, p=0.7)
@@ -179,5 +180,9 @@ def make_loader(df, batch_size=64, train=False, augment=False,
         sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
         return DataLoader(ds, batch_size=batch_size, sampler=sampler,
                           num_workers=workers, pin_memory=True)
+    # Evaluation loaders get their own random generator, so that evaluating (which
+    # starts worker processes) never draws from the global RNG that training uses.
+    # https://docs.pytorch.org/docs/stable/notes/randomness.html#dataloader
     return DataLoader(ds, batch_size=batch_size, shuffle=train,
-                      num_workers=workers, pin_memory=True)
+                      num_workers=workers, pin_memory=True,
+                      generator=None if train else torch.Generator().manual_seed(0))
