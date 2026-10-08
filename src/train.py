@@ -119,6 +119,13 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                                augment=cfg["augment"], balanced=cfg["balanced"],
                                aug=cfg["aug"])
     val_loader = make_loader(inner_val, cfg["batch_size"])
+    # A fixed sample of training images, the same size as inner_val, evaluated each
+    # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
+    # between training and validation performance (train_loss above is measured on
+    # augmented images, so it rises with heavier augmentation by construction).
+    train_check = tr.sample(n=min(len(inner_val), len(tr)),
+                            random_state=cfg["seed"]).reset_index(drop=True)
+    check_loader = make_loader(train_check, cfg["batch_size"])
     held_loader = make_loader(held, cfg["batch_size"])
 
     model = build_model(cfg["depth"]).to(device)
@@ -168,17 +175,21 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 n_seen += inputs.size(0)
 
             epoch_loss = running_loss / n_seen
-            # val_loss uses this arm's own loss, so compare it only within an arm.
-            # train_loss is measured on augmented images, val_loss on clean ones.
+            # Losses use this arm's own loss function, so compare them only within an arm.
+            clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device)
+            clean_auc = roc_auc_score(train_check.target, clean_probs)
             val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
             val_auc = roc_auc_score(inner_val.target, val_probs)
 
             history.append({"epoch": epoch,
-                            "train_loss": float(epoch_loss),
+                            "train_loss": float(epoch_loss),            # augmented, during training
+                            "train_clean_loss": float(clean_loss),      # same model, clean images
+                            "train_clean_auroc": float(clean_auc),
                             "val_loss": float(val_loss),
                             "val_auroc": float(val_auc),
                             "minutes": round((time.time() - since) / 60, 2)})
-            print(f"  epoch {epoch}  loss {epoch_loss:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
+            print(f"  epoch {epoch}  loss {epoch_loss:.4f}  "
+                  f"train-clean AUROC {clean_auc:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
 
             # keep the best epoch
             if val_auc > best_auc:
