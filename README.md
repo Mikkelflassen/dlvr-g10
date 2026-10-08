@@ -140,7 +140,7 @@ Protocol:
 4. Pick the simplest step whose mean AUROC is within noise (±0.02) of the best.
 5. Lock it: change the default `aug` in `src/train.py`, then leave it alone.
 
-Round 1 (in `results/tuning/aug_round1/`, `E0_full`, folds 0 and 1): best
+Round 1 (`E0_full`, folds 0 and 1; runs tagged with the step name): best
 inner AUROC base 0.862 / 0.863, geo 0.880 / 0.856, light 0.881 / 0.868,
 colour 0.871 / 0.862. All within noise of each other. Training loss rose with
 each step, but that is measured on augmented images, so it could not show
@@ -149,7 +149,8 @@ whether overfitting really fell.
 Round 2 adds `none` and logs `train_clean_loss` / `train_clean_auroc`: a fixed
 sample of training images (same size as inner validation) scored each epoch
 *without* augmentation. The gap between those and `val_loss` / `val_auroc` is
-the overfitting measure.
+the overfitting measure. Round 2 runs are tagged `<step>_r2` (e.g. `base_r2`) so
+they sit next to round 1 without overwriting it.
 
 ## The grid
 
