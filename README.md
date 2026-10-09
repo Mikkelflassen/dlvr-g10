@@ -127,6 +127,7 @@ Before the grid, one augmentation is chosen and locked. `make_transform` in
 | `light` | brightness, contrast | cameras and lighting differ |
 | `colour` | hue, saturation | tests whether colour should be left alone |
 | `cutout` | one erased square | hair, rulers and ink cover parts of a lesion |
+| `randaug` | base + RandAugment (not on the ladder) | a generic automatic policy, as a contrast |
 
 Operations and strengths from `geo` upwards are those of the ISIC 2020 winning
 solution (Ha et al., 2020), implemented with torchvision.
@@ -213,6 +214,7 @@ Each function names its source in a comment; this is the full list.
 
 **Methods and workflow**
 
+- RandAugment: Cubuk et al. (2020), [arXiv:1909.13719](https://arxiv.org/abs/1909.13719); [`torchvision.transforms.RandAugment`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.RandAugment.html).
 - Cutout: DeVries & Taylor (2017), [arXiv:1708.04552](https://arxiv.org/abs/1708.04552).
 - Focal loss: Lin et al. (2017), [arXiv:1708.02002](https://arxiv.org/abs/1708.02002). Focal loss and calibration: Mukhoti et al. (2020), [arXiv:2002.09437](https://arxiv.org/abs/2002.09437).
 - Expected calibration error: Guo et al. (2017), [arXiv:1706.04599](https://arxiv.org/abs/1706.04599).

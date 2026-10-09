@@ -52,7 +52,7 @@ def inner_split(dev, test_fold, val_frac=0.2, seed=42):
 
 
 # The augmentation ladder: each step keeps everything from the steps before it.
-AUG_STEPS = ["none", "base", "geo", "light", "colour", "cutout"]
+AUG_STEPS = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
 
 
 def _transpose(img):
@@ -74,6 +74,13 @@ def make_transform(train, augment=False, aug="base"):
                                                   colour variegation is diagnostic for melanoma,
                                                   so a colour shift may contradict the label
       cutout  + one erased square                 hair, rulers and ink cover parts of a lesion
+      randaug base + RandAugment instead of geo..cutout: a generic automatic policy
+              (2 random operations per image from a fixed list of 14, one shared
+              strength), as a contrast to the hand-picked steps above.
+              Cubuk et al. (2020), https://arxiv.org/abs/1909.13719
+              https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.RandAugment.html
+              Note: about half of its operations change colour strongly (Solarize,
+              Posterize, Equalize, AutoContrast, Color).
 
     base is adapted from `data_transforms` in the PyTorch transfer learning tutorial
     (BSD-3-Clause): RandomResizedCrop + RandomHorizontalFlip + ToTensor + Normalize.
@@ -91,6 +98,8 @@ def make_transform(train, augment=False, aug="base"):
     if aug not in AUG_STEPS:
         raise ValueError(f"aug must be one of {AUG_STEPS}, got {aug!r}")
     level = AUG_STEPS.index(aug)
+    if aug == "randaug":
+        level = 1  # base only; RandAugment replaces the hand-picked steps
 
     before, after = [], []  # applied to the PIL image / to the tensor
     if train and augment and level >= 1:
@@ -100,6 +109,10 @@ def make_transform(train, augment=False, aug="base"):
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),   # Ha et al.: VerticalFlip(p=0.5)
         ]
+        if aug == "randaug":
+            # torchvision defaults, which are the paper's ImageNet ResNet-50 setting
+            # (N=2 operations, magnitude M=9 out of 30).
+            before += [transforms.RandAugment(num_ops=2, magnitude=9)]
         if level >= 2:  # geo
             before += [
                 # Ha et al.: Transpose(p=0.5)
