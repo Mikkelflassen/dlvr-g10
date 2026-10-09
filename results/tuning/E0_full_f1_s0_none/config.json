@@ -1,0 +1,17 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 8,
+  "fold": 1,
+  "seed": 0,
+  "tag": "none",
+  "aug": "none",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "balanced": false,
+  "run": "E0_full_f1_s0_none",
+  "git": "bf95a50",
+  "best_inner_auroc": 0.8487136481553489,
+  "minutes": 13.83
+}
