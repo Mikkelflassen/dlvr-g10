@@ -1,0 +1,17 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 8,
+  "fold": 1,
+  "seed": 0,
+  "tag": "randaug",
+  "aug": "randaug",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "balanced": false,
+  "run": "E0_full_f1_s0_randaug",
+  "git": "a5a9ad1",
+  "best_inner_auroc": 0.8652507994358971,
+  "minutes": 17.53
+}
