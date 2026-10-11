@@ -99,7 +99,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     cfg.setdefault("batch_size", 64)
     cfg.setdefault("lr", default_lr(cfg["depth"]))
     cfg.setdefault("augment", True)
-    cfg.setdefault("aug", "base")   # step on the augmentation ladder, see data.make_transform
+    # Augmentation step, see data.make_transform. Locked to "light" on 11 Oct 2026
+    # after the augmentation test (README, "Augmentation test"); every grid run uses it.
+    cfg.setdefault("aug", "light")
     cfg.setdefault("balanced", cfg["arm"] == "E2")
 
     set_seed(cfg["seed"])
