@@ -116,3 +116,69 @@ def e0b(runs_dir, depth, fold, seed=0):
     """E0b: E0's model with the threshold tuned on inner_val instead of 0.5. No training."""
     return score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}",
                      threshold="tuned") | {"arm": "E0b"}
+
+
+
+def tuning_summary(folder, out_name="summary.md"):
+    """One small table per tuning folder, written to <folder>/summary.md.
+
+    Inner validation only (choices are never made on the held-out fold), and only
+    the numbers needed to pick:
+      augmentation tests  -> AUROC per fold and the mean (pick the highest mean);
+      loss settings (pos_weight, gamma) -> F1 at threshold 0.5 (pick the highest),
+      with melanomas found and benign false alarms at 0.5 to show the trade-off.
+    """
+    folder = Path(folder)
+    runs = []
+    for d in sorted(folder.iterdir()):
+        if not (d / "preds.csv").exists():
+            continue
+        cfg = json.loads((d / "config.json").read_text())
+        cfg.setdefault("aug", "base")  # runs from before the ladder existed used base
+        preds = pd.read_csv(d / "preds.csv")
+        inner = preds[preds.split == "inner_val"]
+        y, p = inner.target.values, inner.prob.values
+        yhat = (p >= 0.5).astype(int)
+        runs.append({"cfg": cfg, "fold": cfg["fold"],
+                     "f1": f1_score(y, yhat, zero_division=0),
+                     "found": f"{int(yhat[y == 1].sum())} of {int(y.sum())}",
+                     "false_alarms": int(yhat[y == 0].sum()),
+                     "auroc": roc_auc_score(y, p)})
+    if not runs:
+        return None
+
+    def num(v):  # sort 7 < 15 < 37, and text alphabetically
+        try:
+            return (0, float(v), "")
+        except (TypeError, ValueError):
+            return (1, 0.0, str(v))
+
+    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "epochs")
+            if len({str(r["cfg"].get(k)) for r in runs}) > 1] or ["tag"]
+    table = [f"# {folder.name}", ""]
+
+    if keys == ["aug"]:
+        order = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
+        folds = sorted({r["fold"] for r in runs})
+        auc = {(r["cfg"]["aug"], r["fold"]): r["auroc"] for r in runs}
+        steps = sorted({a for a, _ in auc}, key=lambda a: order.index(a) if a in order else 99)
+        table += ["Inner-validation AUROC. Pick the highest mean.", "",
+                  "| aug | " + " | ".join(f"fold {f}" for f in folds) + " | mean |",
+                  "|" + "---|" * (len(folds) + 2)]
+        for a in steps:
+            vals = [auc.get((a, f)) for f in folds]
+            got = [v for v in vals if v is not None]
+            mean = f"{np.mean(got):.3f}" if len(got) == len(folds) else "–"
+            table.append(f"| {a} | " + " | ".join(f"{v:.3f}" if v is not None else "–" for v in vals)
+                         + f" | {mean} |")
+    else:
+        rows = sorted(runs, key=lambda r: (r["fold"], [num(r["cfg"].get(k)) for k in keys]))
+        head = keys + ["fold", "F1 at 0.5", "melanomas found", "false alarms", "AUROC"]
+        table += ["Inner validation, threshold 0.5. Pick the highest F1.", "",
+                  "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+        for r in rows:
+            table.append("| " + " | ".join([str(r["cfg"].get(k)) for k in keys] + [
+                str(r["fold"]), f"{r['f1']:.3f}", r["found"], str(r["false_alarms"]),
+                f"{r['auroc']:.3f}"]) + " |")
+    (folder / out_name).write_text("\n".join(table) + "\n")
+    return folder / out_name
