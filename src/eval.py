@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (roc_auc_score, average_precision_score,
                              recall_score, precision_score, f1_score,
-                             precision_recall_curve)
+                             precision_recall_curve, confusion_matrix)
 
 
 def ece(y, p, n_bins=15):
@@ -55,6 +55,30 @@ def best_threshold(y, p):
     return float(thresholds[int(np.argmax(f1))])
 
 
+def counts(y, yhat):
+    """The four outcome counts and the percentages read off them.
+
+    Library: sklearn.metrics.confusion_matrix; for labels [0, 1] it is laid out
+    [[tn, fp], [fn, tp]].
+      https://scikit-learn.org/stable/modules/generated/sklearn.metrics.confusion_matrix.html
+
+    found / missed: malignant images called malignant / benign.
+    false_alarms / benign_correct: benign images called malignant / benign.
+    malignant_accuracy = found / all malignant (the same number as recall).
+    benign_accuracy = benign_correct / all benign.
+    malignant_calls_right = found / all images called malignant (same as precision).
+    benign_calls_right = benign_correct / all images called benign.
+    """
+    tn, fp, fn, tp = (int(v) for v in confusion_matrix(y, yhat, labels=[0, 1]).ravel())
+    return {
+        "found": tp, "missed": fn, "false_alarms": fp, "benign_correct": tn,
+        "malignant_accuracy": tp / max(tp + fn, 1),
+        "benign_accuracy": tn / max(tn + fp, 1),
+        "malignant_calls_right": tp / max(tp + fp, 1),
+        "benign_calls_right": tn / max(tn + fn, 1),
+    }
+
+
 def score_run(run_dir, threshold=0.5):
     """One run -> one row of metrics on the held-out fold.
 
@@ -82,6 +106,7 @@ def score_run(run_dir, threshold=0.5):
         "precision": precision_score(y, yhat, zero_division=0),
         "f1": f1_score(y, yhat, zero_division=0),
         "ece": ece(y, p),
+        **counts(y, yhat),
         "minutes": cfg.get("minutes"),
     }
 
@@ -125,8 +150,9 @@ def tuning_summary(folder, out_name="summary.md"):
     Inner validation only (choices are never made on the held-out fold), and only
     the numbers needed to pick:
       augmentation tests  -> AUROC per fold and the mean (pick the highest mean);
-      loss settings (pos_weight, gamma) -> F1 at threshold 0.5 (pick the highest),
-      with melanomas found and benign false alarms at 0.5 to show the trade-off.
+      loss settings (pos_weight, gamma) -> one row per run at threshold 0.5:
+      melanomas found, benign false alarms, accuracy on each class, and how many
+      of the malignant and benign calls were right (see `counts`).
     """
     folder = Path(folder)
     runs = []
@@ -139,10 +165,7 @@ def tuning_summary(folder, out_name="summary.md"):
         inner = preds[preds.split == "inner_val"]
         y, p = inner.target.values, inner.prob.values
         yhat = (p >= 0.5).astype(int)
-        runs.append({"cfg": cfg, "fold": cfg["fold"],
-                     "f1": f1_score(y, yhat, zero_division=0),
-                     "found": f"{int(yhat[y == 1].sum())} of {int(y.sum())}",
-                     "false_alarms": int(yhat[y == 0].sum()),
+        runs.append({"cfg": cfg, "fold": cfg["fold"], "c": counts(y, yhat),
                      "auroc": roc_auc_score(y, p)})
     if not runs:
         return None
@@ -173,12 +196,22 @@ def tuning_summary(folder, out_name="summary.md"):
                          + f" | {mean} |")
     else:
         rows = sorted(runs, key=lambda r: (r["fold"], [num(r["cfg"].get(k)) for k in keys]))
-        head = keys + ["fold", "F1 at 0.5", "melanomas found", "false alarms", "AUROC"]
-        table += ["Inner validation, threshold 0.5. Pick the highest F1.", "",
+        head = keys + ["fold", "melanomas found", "malignant accuracy", "false alarms",
+                       "benign accuracy", "malignant guesses that are right",
+                       "benign guesses that are right"]
+        table += ["Inner validation, threshold 0.5 (an image is called malignant when "
+                  "the network's output is 0.5 or more).", "",
                   "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
         for r in rows:
+            c = r["c"]
+            n_mal, n_ben = c["found"] + c["missed"], c["benign_correct"] + c["false_alarms"]
+            said_mal, said_ben = c["found"] + c["false_alarms"], c["benign_correct"] + c["missed"]
             table.append("| " + " | ".join([str(r["cfg"].get(k)) for k in keys] + [
-                str(r["fold"]), f"{r['f1']:.3f}", r["found"], str(r["false_alarms"]),
-                f"{r['auroc']:.3f}"]) + " |")
+                str(r["fold"]),
+                f"{c['found']} of {n_mal}", f"{c['malignant_accuracy']:.1%}",
+                str(c["false_alarms"]), f"{c['benign_accuracy']:.1%}",
+                f"{c['found']} of {said_mal} ({c['malignant_calls_right']:.1%})",
+                f"{c['benign_correct']:,} of {said_ben:,} ({c['benign_calls_right']:.1%})",
+            ]) + " |")
     (folder / out_name).write_text("\n".join(table) + "\n")
     return folder / out_name
