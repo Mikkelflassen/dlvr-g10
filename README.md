@@ -72,10 +72,11 @@ dropped explicitly.
 1. Open `notebooks/G10_run.ipynb` in Colab (colab.research.google.com →
    GitHub tab → paste this repo's URL).
 2. Runtime → Change runtime type → **T4 GPU**.
-3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG`, `AUG` — and nothing else. For a
-   real grid run leave `TAG` and `AUG` empty. For a test run give `TAG` a name
-   (e.g. `"geo"`); it is then saved in `results/tuning/` instead of
-   `results/runs/`. `AUG` picks an augmentation step for a test run.
+3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG`, `FOLDER`, `AUG` — and nothing
+   else. For a real grid run leave `TAG`, `FOLDER` and `AUG` empty. For a test
+   run set `TAG` (e.g. `"pw15"`) and `FOLDER`, the experiment it belongs to
+   (e.g. `"e1_pos_weight"`); it is saved in `results/tuning/<FOLDER>/` and the
+   folder's `summary.md` table is rebuilt and pushed with it.
 4. Run the cells top to bottom. The last cell commits and pushes the results.
 
 `ARM` is a key from `configs/arms.json`: `E0`/`E1`/`E2`/`E3` × `frozen`/`full`.
@@ -151,7 +152,7 @@ Round 2 adds `none` and logs `train_clean_loss` / `train_clean_auroc`: a fixed
 sample of training images (same size as inner validation) scored each epoch
 *without* augmentation. The gap between those and `val_loss` / `val_auroc` is
 the overfitting measure.
-Round 2 runs go directly in `results/tuning/`, tagged with the step name.
+Round 2 runs are in `results/tuning/aug_round2/`.
 
 ### Decision (11 October 2026): `light` is locked
 
@@ -208,7 +209,8 @@ notebooks/  G10_run.ipynb
 splits/     dev_split.csv  test_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
-            tuning/<arm>_<depth>_f<fold>_s<seed>_<tag>/  pilots and augmentation tests
+            tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
+                   one folder per experiment, each with a summary.md table
 ```
 
 Still to come: `notebooks/G10_analysis.ipynb` (reads every `preds.csv`, builds
