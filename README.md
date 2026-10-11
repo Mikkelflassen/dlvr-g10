@@ -175,10 +175,10 @@ Bootstrap uncertainty of a single value is about ±0.015–0.02.
 - All augmented steps train stably for 8 epochs and are within noise of each
   other. Colour, cutout and RandAugment (which also changes colour strongly) do
   not help.
-- `light` was chosen over the equally good `base` because it was highest on
-  both folds and because E2 shows each malignant image ~27 times per epoch, so
-  the stronger of the equivalent options is preferred. Limitation: decided on
-  E0 and two folds only.
+- `light` was chosen because it had the highest AUROC on both folds and leaves
+  lesion colour unchanged. The steps cannot be separated statistically, so this
+  is a judgement call. Not tested: whether the choice also suits E1–E3, in
+  particular E2, whose sampler repeats each malignant image ~27 times per epoch.
 
 Every grid run uses `light` (the default in `src/train.py`); leave `AUG` empty.
 
