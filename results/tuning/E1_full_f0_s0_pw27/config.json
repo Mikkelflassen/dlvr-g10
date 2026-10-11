@@ -1,0 +1,18 @@
+{
+  "arm": "E1",
+  "depth": "full",
+  "epochs": 8,
+  "pos_weight": 27,
+  "fold": 0,
+  "seed": 0,
+  "tag": "pw27",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "balanced": false,
+  "run": "E1_full_f0_s0_pw27",
+  "git": "9bf3e75",
+  "best_inner_auroc": 0.8830978910847711,
+  "minutes": 18.65
+}
