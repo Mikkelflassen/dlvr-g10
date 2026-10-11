@@ -164,7 +164,7 @@ Best inner-validation AUROC, `E0_full`, seed 0:
 | `geo` | 0.880 | 0.856 | 0.868 |
 | `light` | 0.881 | 0.868 | 0.875 |
 | `colour` | 0.871 | 0.862 | 0.867 |
-| `cutout` | 0.877 | – | – |
+| `cutout` | 0.877 | 0.856 | 0.867 |
 | `randaug` | 0.869 | 0.865 | 0.867 |
 
 Bootstrap uncertainty of a single value is about ±0.015–0.02.
@@ -173,7 +173,8 @@ Bootstrap uncertainty of a single value is about ±0.015–0.02.
   training images reaches 1.000 by epoch 4 while validation AUROC falls from
   0.85 to 0.54–0.75. Its best score only exists because epoch 1 is kept.
 - All augmented steps train stably for 8 epochs and are within noise of each
-  other. Colour and RandAugment (which also changes colour strongly) do not help.
+  other. Colour, cutout and RandAugment (which also changes colour strongly) do
+  not help.
 - `light` was chosen over the equally good `base` because it was highest on
   both folds and because E2 shows each malignant image ~27 times per epoch, so
   the stronger of the equivalent options is preferred. Limitation: decided on
