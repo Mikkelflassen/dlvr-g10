@@ -103,6 +103,12 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # after the augmentation test (README, "Augmentation test"); every grid run uses it.
     cfg.setdefault("aug", "light")
     cfg.setdefault("balanced", cfg["arm"] == "E2")
+    # pos_weight is only used by E1 and gamma/alpha only by E3 (losses.build_loss);
+    # on any other arm they would be ignored and the run mislabelled, so stop here.
+    if cfg.get("pos_weight") is not None and cfg["arm"] != "E1":
+        raise ValueError(f"pos_weight is set but the arm is {cfg['arm']}; it only has an effect on E1")
+    if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and cfg["arm"] != "E3":
+        raise ValueError(f"gamma/alpha is set but the arm is {cfg['arm']}; it only has an effect on E3")
 
     set_seed(cfg["seed"])
 
