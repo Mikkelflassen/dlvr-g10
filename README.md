@@ -109,8 +109,11 @@ E3 uses `torchvision.ops.sigmoid_focal_loss`. Its two knobs are set per arm in
 `arms.json`: `gamma` (focusing, default 2.0) and optionally `alpha` (class
 weight, default -1 = off).
 
-`pos_weight: 7.5` (E1) and `gamma: 2.0` (E3) are still guesses. Each is the
-owner's job to fix on inner validation before their real runs.
+`pos_weight` (E1) is set to 21, chosen on inner validation of fold 0 with full
+fine-tuning (`results/tuning/e1_pos_weight/summary.md`): the highest weight at
+which each extra melanoma found costs at most about 10 extra false alarms.
+`gamma: 2.0` (E3) is still a guess, to be fixed on inner validation before the
+real E3 runs.
 
 Budget: ~13.5 minutes per full run and ~8 per frozen run, 40 runs, so roughly
 7 GPU hours split three ways.
