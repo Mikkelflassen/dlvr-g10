@@ -1,0 +1,18 @@
+{
+  "arm": "E0",
+  "depth": "frozen",
+  "epochs": 8,
+  "fold": 0,
+  "seed": 0,
+  "tag": "pw27",
+  "pos_weight": 27,
+  "batch_size": 64,
+  "lr": 0.001,
+  "augment": true,
+  "aug": "light",
+  "balanced": false,
+  "run": "E0_frozen_f0_s0_pw27",
+  "git": "ef2e70e",
+  "best_inner_auroc": 0.8115060804490177,
+  "minutes": 16.79
+}
