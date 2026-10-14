@@ -1,0 +1,19 @@
+{
+  "arm": "E3",
+  "depth": "full",
+  "epochs": 8,
+  "gamma": 2,
+  "fold": 0,
+  "seed": 0,
+  "tag": "g2_a98",
+  "alpha": 0.98,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "balanced": false,
+  "run": "E3_full_f0_s0_g2_a98",
+  "git": "8c9676d",
+  "best_inner_auroc": 0.87123894329256,
+  "minutes": 17.89
+}
