@@ -1,0 +1,20 @@
+{
+  "arm": "E2",
+  "depth": "full",
+  "epochs": 8,
+  "fold": 2,
+  "seed": 0,
+  "tag": "mf20",
+  "mal_frac": 0.2,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "workers": 2,
+  "balanced": true,
+  "sampling": "fixed",
+  "run": "E2_full_f2_s0_mf20",
+  "git": "14a6ffe",
+  "best_inner_auroc": 0.8990977751434455,
+  "minutes": 17.23
+}
