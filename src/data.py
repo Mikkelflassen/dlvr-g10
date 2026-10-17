@@ -10,7 +10,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
-from sklearn.model_selection import StratifiedGroupKFold
 from PIL import Image
 
 # ImageNet statistics, as in the PyTorch transfer learning tutorial (see make_transform).
@@ -29,26 +28,25 @@ def load_splits(splits_dir, data_root):
     return out
 
 
-def inner_split(dev, test_fold, val_frac=0.2, seed=42):
-    """Training folds -> (train, inner_val), grouped by patient.
+def inner_split(dev, test_fold, splits_dir):
+    """Training folds -> (train, inner_val), read from splits/inner_split.csv.
 
-    inner_val is used for epoch selection, threshold tuning and arm settings.
-    The held-out fold is never touched for any choice.
+    inner_val (20% of the training folds, grouped by patient, stratified by target)
+    is used for epoch selection, threshold tuning and arm settings. The held-out
+    fold is never touched for any choice. The split is fixed in the file, so it is
+    the same for every seed; how it was made is in make_inner_split.py.
 
-    Library: sklearn.model_selection.StratifiedGroupKFold — every patient stays on
-    one side and the malignant rate is kept equal on both. One of round(1/val_frac)
-    parts becomes inner_val (5 parts, so 20%, for the default).
-      https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html
-    Why patients must not be split (ISIC 2020): C. Deotte, "Triple Stratified KFold",
-      https://www.kaggle.com/code/cdeotte/triple-stratified-kfold-with-tfrecords
     Why selection needs its own split: Cawley & Talbot (2010),
       https://jmlr.org/papers/v11/cawley10a.html
     """
     trn = dev[dev.fold != test_fold].reset_index(drop=True)
-    sgkf = StratifiedGroupKFold(n_splits=round(1 / val_frac), shuffle=True, random_state=seed)
-    train_idx, val_idx = next(sgkf.split(trn, trn.target, groups=trn.patient_id))
-    return (trn.iloc[train_idx].reset_index(drop=True),
-            trn.iloc[val_idx].reset_index(drop=True))
+    inner = pd.read_csv(Path(splits_dir) / "inner_split.csv")
+    is_val = trn.image_name.isin(inner.loc[inner.test_fold == test_fold, "image_name"])
+    tr, val = trn[~is_val].reset_index(drop=True), trn[is_val].reset_index(drop=True)
+    # Same kind of guard as for dev/test: no patient on both sides, nothing missing.
+    assert is_val.sum() == (inner.test_fold == test_fold).sum(), "inner_split.csv does not match dev_split.csv"
+    assert not set(tr.patient_id) & set(val.patient_id), "a patient is in both train and inner_val"
+    return tr, val
 
 
 # The augmentation ladder: each step keeps everything from the steps before it.

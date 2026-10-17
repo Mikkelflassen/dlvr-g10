@@ -24,8 +24,10 @@ the E0b rows automatically.
 
 ## Rules
 
-1. **`splits/dev_split.csv` and `splits/test_split.csv` are canonical.** Never
-   regenerate them. If a split assertion fails, the answer is to use the saved
+1. **`splits/dev_split.csv`, `splits/test_split.csv` and `splits/inner_split.csv`
+   are canonical.** Never regenerate them. `inner_split.csv` (frozen 17 Oct 2026)
+   fixes the inner validation images per held-out fold, independent of the seed
+   and the scikit-learn version; it reproduces every earlier seed-0 run exactly. If a split assertion fails, the answer is to use the saved
    CSVs, not to rebuild them.
 2. **All training goes through `notebooks/G10_run.ipynb`.** No training loop in
    any other notebook — a second copy is a second explanation for any gap
@@ -209,8 +211,8 @@ limitation in Methods rather than pretending otherwise.
 README.md
 configs/    arms.json
 notebooks/  G10_run.ipynb
-splits/     dev_split.csv  test_split.csv
-src/        data.py  models.py  losses.py  train.py  eval.py
+splits/     dev_split.csv  test_split.csv  inner_split.csv
+src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
             tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
                    one folder per experiment, each with a summary.md table

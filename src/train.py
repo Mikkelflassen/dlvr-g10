@@ -120,7 +120,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
     # Folds as in [H] `run`: df[df['fold'] != fold] trains, df[df['fold'] == fold] is held out.
     dev, _ = load_splits(splits_dir, data_root)
-    tr, inner_val = inner_split(dev, cfg["fold"], seed=cfg["seed"])
+    tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
     held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
