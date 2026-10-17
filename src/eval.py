@@ -55,6 +55,17 @@ def best_threshold(y, p):
     return float(thresholds[int(np.argmax(f1))])
 
 
+def false_alarms_to_find(y, p, share):
+    """Lower the threshold until `share` of the malignant images are called
+    malignant, and count the benign images called malignant at that point.
+    The same for any monotone shift of the scores, so it measures separation,
+    not where the 0.5 cut happens to fall."""
+    y, p = np.asarray(y), np.asarray(p)
+    pos = np.sort(p[y == 1])[::-1]
+    t = pos[int(np.ceil(share * len(pos))) - 1]
+    return int(((p >= t) & (y == 0)).sum())
+
+
 def counts(y, yhat):
     """The four outcome counts and the percentages read off them.
 
@@ -106,25 +117,29 @@ def score_run(run_dir, threshold=0.5):
         "precision": precision_score(y, yhat, zero_division=0),
         "f1": f1_score(y, yhat, zero_division=0),
         "ece": ece(y, p),
+        "fa_find50": false_alarms_to_find(y, p, 0.5),
+        "fa_find80": false_alarms_to_find(y, p, 0.8),
         **counts(y, yhat),
         "minutes": cfg.get("minutes"),
     }
 
 
-def build_results(runs_dir, out_csv=None):
+def build_results(runs_dir, out_csv=None, tuned_all=False):
     """Every run folder -> one table. This is what the report's results section uses.
 
-    Each trained run gives one row at threshold 0.5. Each E0 run gives a second
-    row, arm "E0b": the same predictions with the threshold tuned on inner_val.
+    Each trained run gives one row at threshold 0.5 (cut "0.5"). Each E0 run gives
+    a second row, arm "E0b": the same predictions with the threshold tuned on
+    inner_val (cut "tuned"). With tuned_all=True every arm gets such a row
+    (E1b, E2b, E3b), so all arms can also be compared at their own best cut.
     """
     rows = []
     for d in sorted(Path(runs_dir).iterdir()):
         if not (d / "preds.csv").exists():
             continue
-        row = score_run(d)
+        row = score_run(d) | {"cut": "0.5"}
         rows.append(row)
-        if row["arm"] == "E0":
-            rows.append(score_run(d, threshold="tuned") | {"arm": "E0b"})
+        if row["arm"] == "E0" or tuned_all:
+            rows.append(score_run(d, threshold="tuned") | {"arm": row["arm"] + "b", "cut": "tuned"})
     df = pd.DataFrame(rows)
     if out_csv:
         df.to_csv(out_csv, index=False)
@@ -215,3 +230,72 @@ def tuning_summary(folder, out_name="summary.md"):
             ]) + " |")
     (folder / out_name).write_text("\n".join(table) + "\n")
     return folder / out_name
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 decision rules (group workflow document, "DeepLearning 5.pdf").
+# They were fixed before the grid was run, so they cannot be bent to fit the
+# results. Only rows at cut "0.5" are used: AUPRC and ECE do not depend on the cut.
+
+def _paired(results, depth, a, b, metric="auprc"):
+    """Per-fold metric of arm a and arm b at one depth, folds both have."""
+    r = results[(results.cut == "0.5") & (results.depth == depth)]
+    x = r[r.arm == a].set_index("fold")[metric]
+    y = r[r.arm == b].set_index("fold")[metric]
+    folds = sorted(set(x.index) & set(y.index))
+    return x.loc[folds], y.loc[folds]
+
+
+def trick_helps(results, arm, depth, min_wins=4):
+    """A trick "helps" if its mean AUPRC is above E0's AND it is higher than E0
+    in at least `min_wins` of the folds (4 of 5 in the workflow)."""
+    x, e0 = _paired(results, depth, arm, "E0")
+    wins = int((x > e0).sum())
+    if len(x) == 0:
+        return {"arm": arm, "depth": depth, "folds": 0, "helps": "no shared folds yet"}
+    return {"arm": arm, "depth": depth, "folds": len(x),
+            "auprc": x.mean(), "auprc_E0": e0.mean(), "gap": (x - e0).mean(),
+            "wins": wins, "helps": bool(x.mean() > e0.mean() and wins >= min_wins)}
+
+
+def e1_vs_e2(results, depth, tie=0.01):
+    """E1 vs E2 by mean AUPRC; within `tie` of each other -> lower mean ECE wins.
+    The workflow says "near tie" without a number; 0.01 AUPRC is our choice."""
+    a, b = _paired(results, depth, "E1", "E2")
+    ea, eb = _paired(results, depth, "E1", "E2", "ece")
+    diff = a.mean() - b.mean()
+    if len(a) == 0:
+        return {"depth": depth, "folds": 0, "winner": "no shared folds yet"}
+    if abs(diff) < tie:
+        winner, why = ("E1" if ea.mean() < eb.mean() else "E2"), "near tie, lower ECE"
+    else:
+        winner, why = ("E1" if diff > 0 else "E2"), "higher AUPRC"
+    return {"depth": depth, "folds": len(a), "auprc_E1": a.mean(), "auprc_E2": b.mean(),
+            "ece_E1": ea.mean(), "ece_E2": eb.mean(), "winner": winner, "why": why}
+
+
+def depth_choice(results, arm):
+    """Higher mean AUPRC wins; if the gap is within the fold-to-fold spread
+    (the larger of the two standard deviations), frozen wins as the simpler one."""
+    r = results[(results.cut == "0.5") & (results.arm == arm)]
+    full, frozen = r[r.depth == "full"].auprc, r[r.depth == "frozen"].auprc
+    spread = max(full.std(), frozen.std())
+    gap = full.mean() - frozen.mean()
+    if len(full) < 2 or len(frozen) < 2:
+        winner = "need 2+ folds per depth"
+    else:
+        winner = "full" if gap > spread else "frozen"
+    return {"arm": arm, "auprc_full": full.mean(), "auprc_frozen": frozen.mean(),
+            "gap": gap, "spread": spread, "winner": winner}
+
+
+def trick_gap_by_depth(results, arm):
+    """Kang et al. (2020) test: gap = AUPRC(trick) - AUPRC(E0), per fold, at each
+    depth. If imbalance tricks mainly act on the last layer, the gap should be
+    about as large with the backbone frozen as with full fine-tuning."""
+    out = {"arm": arm}
+    for depth in ("frozen", "full"):
+        x, e0 = _paired(results, depth, arm, "E0")
+        out[f"gap_{depth}"] = (x - e0).mean()
+        out[f"gap_{depth}_std"] = (x - e0).std()
+    return out

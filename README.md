@@ -214,7 +214,7 @@ limitation in Methods rather than pretending otherwise.
 .gitignore
 README.md
 configs/    arms.json
-notebooks/  G10_run.ipynb
+notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb
 splits/     dev_split.csv  test_split.csv  inner_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
@@ -222,9 +222,12 @@ results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
                    one folder per experiment, each with a summary.md table
 ```
 
-Still to come: `notebooks/G10_analysis.ipynb` (reads every `preds.csv`, builds
-`results/results.csv` — the report's table, owned by one person) and
-`notebooks/G10_data.ipynb` (dataset figures).
+`notebooks/G10_grid.ipynb` runs the 40 grid runs as a queue (resumes after a
+disconnect). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
+`results/runs/`, builds `results/results.csv` (the report's table, owned by one
+person), applies the Phase 3 decision rules and draws the report figures into
+`results/figures/`. No GPU needed. Still to come: `notebooks/G10_data.ipynb`
+(dataset figures).
 
 ## Sources
 
