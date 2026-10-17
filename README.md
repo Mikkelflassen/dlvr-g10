@@ -114,8 +114,12 @@ weight, default -1 = off).
 `pos_weight` (E1) is set to 21, chosen on inner validation of fold 0 with full
 fine-tuning (`results/tuning/e1_pos_weight/summary.md`): the highest weight at
 which each extra melanoma found costs at most about 10 extra false alarms.
-`gamma: 2.0` (E3) is still a guess, to be fixed on inner validation before the
-real E3 runs.
+`gamma: 2.0` without `alpha` (E3) was chosen on 17 Oct 2026 (`results/tuning/e3_gamma/`).
+E2 samples 15% malignant images per batch (`mal_frac: 0.15`), chosen on 17 Oct 2026
+from 10/15/20/25/50% on folds 0-2 (`results/tuning/e2_sampling/`): 15% and 20% were in
+the top 3 for AUPRC on every fold, and 15% had the best AUROC and the fewest false
+alarms to find 50% and 80% of melanomas. It is close to square-root sampling
+(Kang et al., 2020, https://arxiv.org/abs/1910.09217), which here gives ~12%.
 
 Budget: ~13.5 minutes per full run and ~8 per frozen run, 40 runs, so roughly
 7 GPU hours split three ways.
