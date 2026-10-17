@@ -102,6 +102,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # Augmentation step, see data.make_transform. Locked to "light" on 11 Oct 2026
     # after the augmentation test (README, "Augmentation test"); every grid run uses it.
     cfg.setdefault("aug", "light")
+    # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
+    # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
+    cfg.setdefault("workers", min(8, os.cpu_count() or 2))
     cfg.setdefault("balanced", cfg["arm"] == "E2")
     # pos_weight is only used by E1 and gamma/alpha only by E3 (losses.build_loss);
     # on any other arm they would be ignored and the run mislabelled, so stop here.
@@ -125,16 +128,16 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
                                augment=cfg["augment"], balanced=cfg["balanced"],
-                               aug=cfg["aug"])
-    val_loader = make_loader(inner_val, cfg["batch_size"])
+                               aug=cfg["aug"], workers=cfg["workers"])
+    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"])
     # A fixed sample of training images, the same size as inner_val, evaluated each
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
     # between training and validation performance (train_loss above is measured on
     # augmented images, so it rises with heavier augmentation by construction).
     train_check = tr.sample(n=min(len(inner_val), len(tr)),
                             random_state=cfg["seed"]).reset_index(drop=True)
-    check_loader = make_loader(train_check, cfg["batch_size"])
-    held_loader = make_loader(held, cfg["batch_size"])
+    check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"])
+    held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"])
 
     model = build_model(cfg["depth"]).to(device)
     criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
