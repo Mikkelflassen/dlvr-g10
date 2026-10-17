@@ -1,0 +1,19 @@
+{
+  "arm": "E2",
+  "depth": "full",
+  "epochs": 8,
+  "fold": 0,
+  "seed": 0,
+  "tag": "mf25",
+  "mal_frac": 0.25,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "workers": 2,
+  "balanced": true,
+  "run": "E2_full_f0_s0_mf25",
+  "git": "4e1e2b1",
+  "best_inner_auroc": 0.8501024262590141,
+  "minutes": 17.09
+}
