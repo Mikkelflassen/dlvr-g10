@@ -150,7 +150,7 @@ def tuning_summary(folder, out_name="summary.md"):
     Inner validation only (choices are never made on the held-out fold), and only
     the numbers needed to pick:
       augmentation tests  -> AUROC per fold and the mean (pick the highest mean);
-      loss settings (pos_weight, gamma) -> one row per run at threshold 0.5:
+      loss / sampling settings (pos_weight, gamma, mal_frac) -> one row per run at threshold 0.5:
       melanomas found, benign false alarms, accuracy on each class, and how many
       of the malignant and benign calls were right (see `counts`).
     """
@@ -176,7 +176,7 @@ def tuning_summary(folder, out_name="summary.md"):
         except (TypeError, ValueError):
             return (1, 0.0, str(v))
 
-    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "epochs", "seed")
+    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "epochs", "seed")
             if len({str(r["cfg"].get(k)) for r in runs}) > 1] or ["tag"]
     table = [f"# {folder.name}", ""]
 

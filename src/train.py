@@ -87,7 +87,7 @@ def predict(model, loader, device):
 
 def run(cfg, splits_dir, data_root, runs_dir, device=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
-                 pos_weight (E1), gamma / alpha (E3), balanced (E2), augment, aug, lr, tag
+                 pos_weight (E1), gamma / alpha (E3), balanced / mal_frac (E2), augment, aug, lr, tag
 
     `tag` appends to the run folder name, so the same arm/fold/seed can be run
     more than once with different settings without overwriting itself.
@@ -110,6 +110,10 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # on any other arm they would be ignored and the run mislabelled, so stop here.
     if cfg.get("pos_weight") is not None and cfg["arm"] != "E1":
         raise ValueError(f"pos_weight is set but the arm is {cfg['arm']}; it only has an effect on E1")
+    if cfg.get("mal_frac") is not None and cfg["arm"] != "E2":
+        raise ValueError(f"mal_frac is set but the arm is {cfg['arm']}; it only has an effect on E2")
+    if cfg["arm"] == "E2":
+        cfg.setdefault("mal_frac", 0.5)
     if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and cfg["arm"] != "E3":
         raise ValueError(f"gamma/alpha is set but the arm is {cfg['arm']}; it only has an effect on E3")
 
@@ -128,7 +132,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
                                augment=cfg["augment"], balanced=cfg["balanced"],
-                               aug=cfg["aug"], workers=cfg["workers"])
+                               aug=cfg["aug"], workers=cfg["workers"],
+                               mal_frac=cfg.get("mal_frac", 0.5))
     val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"])
     # A fixed sample of training images, the same size as inner_val, evaluated each
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
