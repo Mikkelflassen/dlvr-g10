@@ -176,7 +176,7 @@ def tuning_summary(folder, out_name="summary.md"):
         except (TypeError, ValueError):
             return (1, 0.0, str(v))
 
-    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "epochs", "seed")
+    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling", "epochs", "seed")
             if len({str(r["cfg"].get(k)) for r in runs}) > 1] or ["tag"]
     table = [f"# {folder.name}", ""]
 

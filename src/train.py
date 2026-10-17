@@ -25,7 +25,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import roc_auc_score
 
-from data import load_splits, inner_split, make_loader
+from data import load_splits, inner_split, make_loader, sampling_weights
 from models import build_model, default_lr
 from losses import build_loss
 
@@ -87,7 +87,7 @@ def predict(model, loader, device):
 
 def run(cfg, splits_dir, data_root, runs_dir, device=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
-                 pos_weight (E1), gamma / alpha (E3), balanced / mal_frac (E2), augment, aug, lr, tag
+                 pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
 
     `tag` appends to the run folder name, so the same arm/fold/seed can be run
     more than once with different settings without overwriting itself.
@@ -112,8 +112,16 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
         raise ValueError(f"pos_weight is set but the arm is {cfg['arm']}; it only has an effect on E1")
     if cfg.get("mal_frac") is not None and cfg["arm"] != "E2":
         raise ValueError(f"mal_frac is set but the arm is {cfg['arm']}; it only has an effect on E2")
+    if cfg.get("sampling") is not None and cfg["arm"] != "E2":
+        raise ValueError(f"sampling is set but the arm is {cfg['arm']}; it only has an effect on E2")
     if cfg["arm"] == "E2":
         cfg.setdefault("mal_frac", 0.5)
+        # "fixed": the same share every epoch. "progressive": progressively-balanced
+        # sampling (Kang et al., 2020, Sec. 3, https://arxiv.org/abs/1910.09217): the
+        # share moves linearly from the natural one (epoch 0) to mal_frac (last epoch).
+        cfg.setdefault("sampling", "fixed")
+        if cfg["sampling"] not in ("fixed", "progressive"):
+            raise ValueError(f"sampling must be 'fixed' or 'progressive', got {cfg['sampling']!r}")
     if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and cfg["arm"] != "E3":
         raise ValueError(f"gamma/alpha is set but the arm is {cfg['arm']}; it only has an effect on E3")
 
@@ -165,7 +173,12 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
         torch.save(model.state_dict(), best_model_params_path)
         best_auc = -1.0
 
+        natural = float(tr.target.mean())
         for epoch in range(cfg["epochs"]):
+            share = None
+            if cfg.get("sampling") == "progressive":
+                share = natural + epoch / max(cfg["epochs"] - 1, 1) * (cfg["mal_frac"] - natural)
+                train_loader.sampler.weights = sampling_weights(tr.target.values, share)
             model.train()  # Set model to training mode
             running_loss = 0.0
             n_seen = 0
@@ -203,7 +216,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                             "train_clean_auroc": float(clean_auc),
                             "val_loss": float(val_loss),
                             "val_auroc": float(val_auc),
-                            "minutes": round((time.time() - since) / 60, 2)})
+                            "minutes": round((time.time() - since) / 60, 2),
+                            **({"mal_frac": round(share, 4)} if share is not None else {})})
             print(f"  epoch {epoch}  loss {epoch_loss:.4f}  "
                   f"train-clean AUROC {clean_auc:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
 

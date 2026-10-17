@@ -173,6 +173,20 @@ class ISICDataset(Dataset):
         return image, torch.tensor(row.target).float()
 
 
+def sampling_weights(target, mal_frac):
+    """Per-image sampling weights so that a share `mal_frac` of the images drawn is
+    malignant on average. Adapted from ptrblck (see make_loader): weight = wanted
+    share of the class / number of images in it. With mal_frac = 0.5 this is his
+    1 / class count (times 0.5, which the sampler normalises away), i.e. the 50/50
+    sampling used before 17 Oct 2026."""
+    target = np.asarray(target).astype(int)
+    class_sample_count = np.array(
+        [len(np.where(target == t)[0]) for t in np.unique(target)])
+    weight = np.array([1. - mal_frac, mal_frac]) / class_sample_count
+    samples_weight = np.array([weight[t] for t in target])
+    return torch.from_numpy(samples_weight).double()
+
+
 def make_loader(df, batch_size=64, train=False, augment=False,
                 balanced=False, workers=2, aug="base", mal_frac=0.5):
     """balanced=True is E2: oversample malignant so that on average a share
@@ -183,15 +197,7 @@ def make_loader(df, batch_size=64, train=False, augment=False,
         # "How to handle imbalanced classes" (post 2):
         #   https://discuss.pytorch.org/t/how-to-handle-imbalanced-classes/11264
         # Library: https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.WeightedRandomSampler
-        target = df.target.values.astype(int)
-        class_sample_count = np.array(
-            [len(np.where(target == t)[0]) for t in np.unique(target)])
-        # Per-image weight = wanted share of the class / number of images in it.
-        # With mal_frac = 0.5 this is ptrblck's 1 / class count (times 0.5, which the
-        # sampler normalises away), i.e. the 50/50 sampling used before 17 Oct 2026.
-        weight = np.array([1. - mal_frac, mal_frac]) / class_sample_count
-        samples_weight = np.array([weight[t] for t in target])
-        samples_weight = torch.from_numpy(samples_weight).double()
+        samples_weight = sampling_weights(df.target.values, mal_frac)
         sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
         return DataLoader(ds, batch_size=batch_size, sampler=sampler,
                           num_workers=workers, pin_memory=True)
