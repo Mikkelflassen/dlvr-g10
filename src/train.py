@@ -105,16 +105,18 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))
-    cfg.setdefault("balanced", cfg["arm"] == "E2")
+    # E5 = E2's sampler + E3's focal loss (workflow Phase 4).
+    SAMPLER_ARMS, FOCAL_ARMS = ("E2", "E5"), ("E3", "E5")
+    cfg.setdefault("balanced", cfg["arm"] in SAMPLER_ARMS)
     # pos_weight is only used by E1 and gamma/alpha only by E3 (losses.build_loss);
     # on any other arm they would be ignored and the run mislabelled, so stop here.
     if cfg.get("pos_weight") is not None and cfg["arm"] != "E1":
         raise ValueError(f"pos_weight is set but the arm is {cfg['arm']}; it only has an effect on E1")
-    if cfg.get("mal_frac") is not None and cfg["arm"] != "E2":
-        raise ValueError(f"mal_frac is set but the arm is {cfg['arm']}; it only has an effect on E2")
-    if cfg.get("sampling") is not None and cfg["arm"] != "E2":
-        raise ValueError(f"sampling is set but the arm is {cfg['arm']}; it only has an effect on E2")
-    if cfg["arm"] == "E2":
+    if cfg.get("mal_frac") is not None and cfg["arm"] not in SAMPLER_ARMS:
+        raise ValueError(f"mal_frac is set but the arm is {cfg['arm']}; it only has an effect on E2/E5")
+    if cfg.get("sampling") is not None and cfg["arm"] not in SAMPLER_ARMS:
+        raise ValueError(f"sampling is set but the arm is {cfg['arm']}; it only has an effect on E2/E5")
+    if cfg["arm"] in SAMPLER_ARMS:
         cfg.setdefault("mal_frac", 0.5)
         # "fixed": the same share every epoch. "progressive": progressively-balanced
         # sampling (Kang et al., 2020, Sec. 3, https://arxiv.org/abs/1910.09217): the
@@ -122,8 +124,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
         cfg.setdefault("sampling", "fixed")
         if cfg["sampling"] not in ("fixed", "progressive"):
             raise ValueError(f"sampling must be 'fixed' or 'progressive', got {cfg['sampling']!r}")
-    if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and cfg["arm"] != "E3":
-        raise ValueError(f"gamma/alpha is set but the arm is {cfg['arm']}; it only has an effect on E3")
+    if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and cfg["arm"] not in FOCAL_ARMS:
+        raise ValueError(f"gamma/alpha is set but the arm is {cfg['arm']}; it only has an effect on E3/E5")
 
     set_seed(cfg["seed"])
 

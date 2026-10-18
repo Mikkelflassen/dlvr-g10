@@ -12,6 +12,7 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
     E1       : BCE with pos_weight
     E2       : plain BCE + balanced sampler (see data.make_loader)
     E3       : focal loss
+    E5       : focal loss + E2's sampler (E2 and E3 combined, workflow Phase 4)
     """
     if arm == "E1":
         # Library: torch.nn.BCEWithLogitsLoss, pos_weight argument.
@@ -20,7 +21,7 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
             raise ValueError("E1 needs pos_weight")
         w = torch.tensor([pos_weight], dtype=torch.float32, device=device)
         return nn.BCEWithLogitsLoss(pos_weight=w)
-    if arm == "E3":
+    if arm in ("E3", "E5"):
         # Library: torchvision.ops.sigmoid_focal_loss — focal loss of Lin et al. (2017).
         #   https://arxiv.org/abs/1708.02002
         #   https://github.com/pytorch/vision/blob/main/torchvision/ops/focal_loss.py
