@@ -1,0 +1,19 @@
+{
+  "arm": "E2",
+  "depth": "frozen",
+  "epochs": 8,
+  "mal_frac": 0.15,
+  "fold": 3,
+  "seed": 0,
+  "batch_size": 64,
+  "lr": 0.001,
+  "augment": true,
+  "aug": "light",
+  "workers": 8,
+  "balanced": true,
+  "sampling": "fixed",
+  "run": "E2_frozen_f3_s0",
+  "git": "bed73d9",
+  "best_inner_auroc": 0.8563636363636363,
+  "minutes": 0.94
+}
