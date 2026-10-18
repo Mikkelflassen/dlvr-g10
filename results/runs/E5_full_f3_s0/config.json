@@ -1,0 +1,22 @@
+{
+  "arm": "E5",
+  "depth": "full",
+  "epochs": 8,
+  "mal_frac": 0.15,
+  "gamma": 2.0,
+  "fold": 3,
+  "seed": 0,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "img_size": 256,
+  "backbone": "resnet18",
+  "workers": 2,
+  "balanced": true,
+  "sampling": "fixed",
+  "run": "E5_full_f3_s0",
+  "git": "1d825cd",
+  "best_inner_auroc": 0.8830826316540603,
+  "minutes": 17.65
+}
