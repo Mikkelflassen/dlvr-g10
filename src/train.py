@@ -102,6 +102,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # Augmentation step, see data.make_transform. Locked to "light" on 11 Oct 2026
     # after the augmentation test (README, "Augmentation test"); every grid run uses it.
     cfg.setdefault("aug", "light")
+    # M12 options; the defaults are what every run before M12 used.
+    cfg.setdefault("img_size", 256)
+    cfg.setdefault("backbone", "resnet18")
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))
@@ -143,18 +146,18 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
                                augment=cfg["augment"], balanced=cfg["balanced"],
                                aug=cfg["aug"], workers=cfg["workers"],
-                               mal_frac=cfg.get("mal_frac", 0.5))
-    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"])
+                               mal_frac=cfg.get("mal_frac", 0.5), size=cfg["img_size"])
+    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
     # A fixed sample of training images, the same size as inner_val, evaluated each
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
     # between training and validation performance (train_loss above is measured on
     # augmented images, so it rises with heavier augmentation by construction).
     train_check = tr.sample(n=min(len(inner_val), len(tr)),
                             random_state=cfg["seed"]).reset_index(drop=True)
-    check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"])
-    held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"])
+    check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
+    held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
 
-    model = build_model(cfg["depth"]).to(device)
+    model = build_model(cfg["depth"], cfg["backbone"]).to(device)
     criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
                            device, cfg.get("alpha", -1))
     # Only parameters that require gradients are optimised, as in [T].

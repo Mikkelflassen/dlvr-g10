@@ -1,0 +1,4 @@
+{
+  "384":   {"img_size": 384},
+  "effb0": {"backbone": "efficientnet_b0"}
+}

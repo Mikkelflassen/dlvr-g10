@@ -58,7 +58,7 @@ def _transpose(img):
     return img.transpose(Image.TRANSPOSE)
 
 
-def make_transform(train, augment=False, aug="base"):
+def make_transform(train, augment=False, aug="base", size=256):
     """EDIT THE TRAINING AUGMENTATION HERE — this is the only place it lives.
 
     Applies to training images only; validation and test are never augmented.
@@ -103,7 +103,7 @@ def make_transform(train, augment=False, aug="base"):
     if train and augment and level >= 1:
         # base
         before += [
-            transforms.RandomResizedCrop(256, scale=(0.5, 1.0)),
+            transforms.RandomResizedCrop(size, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),   # Ha et al.: VerticalFlip(p=0.5)
         ]
@@ -144,7 +144,8 @@ def make_transform(train, augment=False, aug="base"):
                 # One black square with side 0.375 of the image = 14% of its area.
                 transforms.RandomErasing(p=0.7, scale=(0.14, 0.14), ratio=(1.0, 1.0), value=0),
             ]
-    # images are already 256x256, so nothing else is needed without augmentation
+    # Images are already size x size (Chris Deotte's resized datasets, one per size),
+    # so nothing else is needed without augmentation.
     return transforms.Compose(before + [transforms.ToTensor()] + after
                               + [transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
@@ -188,10 +189,10 @@ def sampling_weights(target, mal_frac):
 
 
 def make_loader(df, batch_size=64, train=False, augment=False,
-                balanced=False, workers=2, aug="base", mal_frac=0.5):
+                balanced=False, workers=2, aug="base", mal_frac=0.5, size=256):
     """balanced=True is E2: oversample malignant so that on average a share
     `mal_frac` of the training images drawn is malignant (0.5 = 50/50)."""
-    ds = ISICDataset(df, make_transform(train, augment, aug))
+    ds = ISICDataset(df, make_transform(train, augment, aug, size))
     if train and balanced:
         # Adapted from ptrblck's answer in the PyTorch forum thread
         # "How to handle imbalanced classes" (post 2):

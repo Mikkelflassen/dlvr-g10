@@ -213,8 +213,8 @@ limitation in Methods rather than pretending otherwise.
 ```
 .gitignore
 README.md
-configs/    arms.json
-notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb
+configs/    arms.json  m12.json
+notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb  G10_m12.ipynb
 splits/     dev_split.csv  test_split.csv  inner_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
@@ -223,7 +223,9 @@ results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
 ```
 
 `notebooks/G10_grid.ipynb` runs the 40 grid runs as a queue (resumes after a
-disconnect). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
+disconnect). `notebooks/G10_m12.ipynb` runs the extension (M12): one base
+configuration with one change at a time from `configs/m12.json` (384 px images,
+EfficientNet-B0), results in `results/m12/`. `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
 `results/runs/`, builds `results/results.csv` (the report's table, owned by one
 person), applies the Phase 3 decision rules and draws the report figures into
 `results/figures/`. No GPU needed. Still to come: `notebooks/G10_data.ipynb`
