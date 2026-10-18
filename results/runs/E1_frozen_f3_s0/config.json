@@ -1,0 +1,18 @@
+{
+  "arm": "E1",
+  "depth": "frozen",
+  "epochs": 8,
+  "pos_weight": 21,
+  "fold": 3,
+  "seed": 0,
+  "batch_size": 64,
+  "lr": 0.001,
+  "augment": true,
+  "aug": "light",
+  "workers": 8,
+  "balanced": false,
+  "run": "E1_frozen_f3_s0",
+  "git": "b7f972a",
+  "best_inner_auroc": 0.8454088768374481,
+  "minutes": 0.95
+}
