@@ -105,6 +105,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # M12 options; the defaults are what every run before M12 used.
     cfg.setdefault("img_size", 256)
     cfg.setdefault("backbone", "resnet18")
+    cfg.setdefault("extra_train", None)            # "isic2019": see isic2019.py
+    cfg.setdefault("extra_root", "/content/isic2019")
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))
@@ -142,6 +144,16 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     dev, _ = load_splits(splits_dir, data_root)
     tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
     held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
+    tr_2020 = tr
+    # M12 step `isic2019`: extra training images only. inner_val and the held-out
+    # fold stay pure ISIC 2020, so every number stays comparable with the grid.
+    if cfg.get("extra_train") == "isic2019":
+        from isic2019 import load_extra
+        ext = load_extra(splits_dir, cfg["extra_root"])
+        cfg.update({"n_extra": int(len(ext)), "n_extra_melanomas": int(ext.target.sum())})
+        tr = pd.concat([tr[["image_name", "target", "path"]], ext], ignore_index=True)
+    elif cfg.get("extra_train"):
+        raise ValueError(f"unknown extra_train {cfg['extra_train']!r}")
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True,
                                augment=cfg["augment"], balanced=cfg["balanced"],
@@ -152,7 +164,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
     # between training and validation performance (train_loss above is measured on
     # augmented images, so it rises with heavier augmentation by construction).
-    train_check = tr.sample(n=min(len(inner_val), len(tr)),
+    # Drawn from the ISIC 2020 training images only, so it stays comparable when
+    # ISIC 2019 is added (M12 step isic2019).
+    train_check = tr_2020.sample(n=min(len(inner_val), len(tr_2020)),
                             random_state=cfg["seed"]).reset_index(drop=True)
     check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
     held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])

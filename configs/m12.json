@@ -1,4 +1,5 @@
 {
   "384":   {"img_size": 384},
-  "effb0": {"backbone": "efficientnet_b0"}
+  "effb0": {"backbone": "efficientnet_b0"},
+  "isic2019":{"extra_train": "isic2019"}
 }
