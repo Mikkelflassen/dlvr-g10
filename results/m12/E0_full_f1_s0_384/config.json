@@ -1,0 +1,20 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 8,
+  "img_size": 384,
+  "fold": 1,
+  "seed": 0,
+  "tag": "384",
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "backbone": "resnet18",
+  "workers": 2,
+  "balanced": false,
+  "run": "E0_full_f1_s0_384",
+  "git": "e4c703e",
+  "best_inner_auroc": 0.8529037949265564,
+  "minutes": 36.23
+}
