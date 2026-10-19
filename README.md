@@ -215,8 +215,10 @@ limitation in Methods rather than pretending otherwise.
 README.md
 configs/    arms.json  m12.json
 notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb  G10_m12.ipynb
+            G10_panderm.ipynb
 splits/     dev_split.csv  test_split.csv  inner_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
+            panderm.py  check_institutions.py
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
             tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
                    one folder per experiment, each with a summary.md table
@@ -225,7 +227,10 @@ results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
 `notebooks/G10_grid.ipynb` runs the 40 grid runs as a queue (resumes after a
 disconnect). `notebooks/G10_m12.ipynb` runs the extension (M12): one base
 configuration with one change at a time from `configs/m12.json` (384 px images,
-EfficientNet-B0), results in `results/m12/`. `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
+EfficientNet-B0), results in `results/m12/`. `notebooks/G10_panderm.ipynb` is the
+M12 step with PanDerm_Base as a frozen encoder plus a linear probe (`src/panderm.py`),
+also reported without the University of Queensland images, which may overlap with
+PanDerm's pretraining data (`src/check_institutions.py`). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
 `results/runs/`, builds `results/results.csv` (the report's table, owned by one
 person), applies the Phase 3 decision rules and draws the report figures into
 `results/figures/`. No GPU needed. Still to come: `notebooks/G10_data.ipynb`
