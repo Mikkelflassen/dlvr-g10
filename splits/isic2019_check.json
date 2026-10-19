@@ -3,7 +3,7 @@
   "isic2019_melanomas": 4509,
   "known_pair_distance": {
     "median": 0.0,
-    "p99": 6,
+    "p99": 0,
     "max": 0
   },
   "random_pairs_within_T": 0.00016515855221012173,
@@ -49,5 +49,6 @@
   "isic2019_kept": 23671,
   "isic2019_kept_melanomas": 4370,
   "isic2020_cross_split_pairs": 2043,
-  "isic2020_cross_split_pairs_touching_test": 555
+  "isic2020_cross_split_pairs_touching_test": 555,
+  "note": "known_pair_distance.p99 corrected from 6 to 0 (the 6 written by the first run was T, the floor MIN_T)."
 }
