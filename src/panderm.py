@@ -56,34 +56,109 @@ TRANSFORM = transforms.Compose([
 C_GRID = [1e-4, 1e-3, 1e-2, 1e-1, 1.0]
 
 
-def load_panderm(panderm_repo, checkpoint, device):
-    """PanDerm_Base with its pretrained weights, CLS-token features, eval mode.
-
-    Their builder loads with strict=False, which would also accept a file with
-    none of the right keys; we check that every encoder weight was found.
-    """
+def _modeling(panderm_repo):
+    """PanDerm's model definitions, loaded once from the cloned repo."""
+    if "panderm_modeling" in sys.modules:
+        return sys.modules["panderm_modeling"]
     path = Path(panderm_repo) / "classification" / "models" / "modeling_finetune.py"
     spec = importlib.util.spec_from_file_location("panderm_modeling", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod     # timm's @register_model looks the module up here
     spec.loader.exec_module(mod)
-    model = mod.panderm_base_patch16_224()
+    return mod
 
+
+def _load_weights(model, checkpoint):
+    """Copy the pretrained weights into `model` by name.
+
+    Their builder loads with strict=False, which would also accept a file with
+    none of the right keys; we check that every encoder weight was found.
+    The pretraining head (if any) is dropped first: it never fits our one-logit head.
+    """
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     for key in ("model", "state_dict"):
         if isinstance(state, dict) and key in state:
             state = state[key]
     state = {k.replace("module.", "").replace("encoder.", ""): v for k, v in state.items()}
+    state = {k: v for k, v in state.items() if not k.startswith("head.")}
     result = model.load_state_dict(state, strict=False)
-    # head: replaced below. pos_embed: fixed sin-cos values built in the code, not learned.
+    # head: ours, new. pos_embed: fixed sin-cos values built in the code, not learned.
     missing = [k for k in result.missing_keys if not k.startswith("head.") and k != "pos_embed"]
     n_found = len(model.state_dict()) - len(result.missing_keys)
     print(f"PanDerm weights: {n_found} tensors loaded, {len(missing)} encoder tensors missing, "
           f"{len(result.unexpected_keys)} extra in file")
     assert not missing, f"encoder weights missing from the checkpoint, e.g. {missing[:5]}"
 
+
+def load_panderm(panderm_repo, checkpoint, device):
+    """PanDerm_Base with its pretrained weights, CLS-token features, eval mode (frozen use)."""
+    model = _modeling(panderm_repo).panderm_base_patch16_224()
+    _load_weights(model, checkpoint)
     model.head = torch.nn.Identity()
     return model.eval().to(device)
+
+
+# ---------------------------------------------------------------------------
+# Full fine-tuning (M12 steps panderm_ft, panderm_ft_isic2019), used by train.run.
+# The recipe follows PanDerm's own fine-tuning script (classification/
+# run_class_finetuning.py, README "Fine-tuning"): AdamW, weight decay 0.05,
+# layer-wise learning-rate decay 0.65, stochastic depth (drop_path) 0.2, cosine
+# schedule with linear warm-up, CLS token + linear head (init_scale 0.001,
+# layer scale 0.1). Changed to fit our protocol and budget: 8 epochs instead of
+# 50 (warm-up 1 instead of 10), batch 64 instead of 128 with the learning rate
+# scaled linearly (5e-4 -> 2.5e-4, Goyal et al. 2017, https://arxiv.org/abs/1706.02677),
+# plain BCE with one logit and no sampler (arm E0), our "light" augmentation
+# instead of mixup/cutmix, best epoch by inner-validation AUROC as in every run.
+# Layer-wise decay: Bao et al. 2022 (BEiT), https://arxiv.org/abs/2106.08254
+# ---------------------------------------------------------------------------
+def build_finetune(panderm_repo, checkpoint, drop_path=0.2):
+    """PanDerm_Base for full fine-tuning with one output logit."""
+    model = _modeling(panderm_repo).panderm_base_patch16_224_finetune(
+        pretrained=False, num_classes=1, drop_rate=0.0, drop_path_rate=drop_path,
+        attn_drop_rate=0.0, drop_block_rate=None, use_mean_pooling=False,
+        init_scale=0.001, use_rel_pos_bias=False, init_values=0.1, lin_probe=False)
+    _load_weights(model, checkpoint)
+    return model
+
+
+def _layer_id(name, n_layers):
+    """Adapted from get_num_layer_for_vit (PanDerm classification/furnace/optim_factory.py):
+    embeddings are layer 0, block i is layer i+1, everything after the blocks is the top."""
+    if name in ("cls_token", "mask_token", "pos_embed") or name.startswith("patch_embed"):
+        return 0
+    if name.startswith("blocks."):
+        return int(name.split(".")[1]) + 1
+    return n_layers + 1
+
+
+def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
+    """Parameter groups with a learning-rate scale per layer, adapted from
+    get_parameter_groups + LayerDecayValueAssigner (same file): the head learns at
+    the full rate, each block below it at layer_decay times the one above. No weight
+    decay on biases, norms and tokens."""
+    n_layers = len(model.blocks)
+    groups = {}
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        no_wd = param.ndim == 1 or name.endswith(".bias") or name in ("cls_token", "pos_embed")
+        lid = _layer_id(name, n_layers)
+        key = (lid, no_wd)
+        if key not in groups:
+            groups[key] = {"params": [], "weight_decay": 0.0 if no_wd else weight_decay,
+                           "lr_scale": layer_decay ** (n_layers + 1 - lid)}
+        groups[key]["params"].append(param)
+    return list(groups.values())
+
+
+def cosine_lr(base, final, epochs, steps_per_epoch, warmup_epochs=1):
+    """Learning rate per step: linear warm-up from 0, then cosine down to `final`.
+    Adapted from cosine_scheduler (PanDerm classification/furnace/utils.py)."""
+    warm = int(warmup_epochs * steps_per_epoch)
+    total = epochs * steps_per_epoch
+    rest = np.arange(total - warm)
+    cos = final + 0.5 * (base - final) * (1 + np.cos(np.pi * rest / max(len(rest), 1)))
+    return np.concatenate([np.linspace(0, base, warm, endpoint=False), cos])
 
 
 class _Images(Dataset):

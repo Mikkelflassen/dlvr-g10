@@ -232,7 +232,9 @@ M12 step with PanDerm_Base as a frozen encoder plus a linear probe (`src/panderm
 also reported without the University of Queensland images, which may overlap with
 PanDerm's pretraining data (`src/check_institutions.py`). The M12 step `isic2019`
 adds ISIC 2019 images to training only; `notebooks/G10_isic2019_check.ipynb` must run
-first and removes every ISIC 2019 image that duplicates an ISIC 2020 image (`src/isic2019.py`). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
+first and removes every ISIC 2019 image that duplicates an ISIC 2020 image (`src/isic2019.py`). The steps
+`panderm_ft` and `panderm_ft_isic2019` fine-tune the whole PanDerm network inside `train.run`
+(recipe in `src/panderm.py`; mixed precision is used only for these). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
 `results/runs/`, builds `results/results.csv` (the report's table, owned by one
 person), applies the Phase 3 decision rules and draws the report figures into
 `results/figures/`. No GPU needed. Still to come: `notebooks/G10_data.ipynb`

@@ -49,7 +49,7 @@ def set_seed(seed=0):
     torch.backends.cudnn.deterministic = True
 
 
-def val_epoch(model, loader, criterion, device):
+def val_epoch(model, loader, criterion, device, amp=False):
     """Adapted from [H] `val_epoch`: loss and probabilities over the whole loader.
 
     Changes: sigmoid on one logit instead of softmax, no test-time augmentation,
@@ -61,7 +61,9 @@ def val_epoch(model, loader, criterion, device):
     with torch.no_grad():
         for (data, target) in loader:
             data, target = data.to(device), target.to(device)
-            logits = model(data).squeeze(1)
+            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=amp):
+                logits = model(data).squeeze(1)
+            logits = logits.float()
             probs = logits.sigmoid()
             PROBS.append(probs.detach().cpu())
 
@@ -72,15 +74,16 @@ def val_epoch(model, loader, criterion, device):
     return val_loss / len(PROBS), PROBS
 
 
-def predict(model, loader, device):
+def predict(model, loader, device, amp=False):
     """Probabilities only — the same loop as `val_epoch` without the loss."""
     model.eval()
     PROBS = []
     with torch.no_grad():
         for (data, target) in loader:
             data = data.to(device)
-            logits = model(data).squeeze(1)
-            probs = logits.sigmoid()
+            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=amp):
+                logits = model(data).squeeze(1)
+            probs = logits.float().sigmoid()
             PROBS.append(probs.detach().cpu())
     return torch.cat(PROBS).numpy()
 
@@ -106,6 +109,18 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     cfg.setdefault("img_size", 256)
     cfg.setdefault("backbone", "resnet18")
     cfg.setdefault("extra_train", None)            # "isic2019": see isic2019.py
+    # PanDerm full fine-tuning (M12): recipe and sources in panderm.py.
+    if cfg["backbone"] == "panderm_base":
+        cfg.setdefault("panderm_repo", "/content/PanDerm")
+        cfg.setdefault("panderm_ckpt", "/content/panderm_bb_data6_checkpoint-499.pth")
+        cfg.setdefault("weight_decay", 0.05)
+        cfg.setdefault("layer_decay", 0.65)
+        cfg.setdefault("drop_path", 0.2)
+        cfg.setdefault("warmup_epochs", 1)
+        cfg.setdefault("min_lr", 1e-6)
+    # Mixed precision (float16 on the GPU) is only used for PanDerm, where a ViT-B
+    # does not fit the time budget without it; every earlier run is unchanged.
+    cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
@@ -171,13 +186,33 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
     held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
 
-    model = build_model(cfg["depth"], cfg["backbone"]).to(device)
+    if cfg["backbone"] == "panderm_base":
+        if cfg["depth"] != "full":
+            raise ValueError("panderm_base in train.run is full fine-tuning; the frozen version is panderm.probe_fold")
+        from panderm import build_finetune
+        model = build_finetune(cfg["panderm_repo"], cfg["panderm_ckpt"], cfg["drop_path"]).to(device)
+    else:
+        model = build_model(cfg["depth"], cfg["backbone"]).to(device)
     criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
                            device, cfg.get("alpha", -1))
     # Only parameters that require gradients are optimised, as in [T].
     # Adam: Kingma & Ba (2015), https://arxiv.org/abs/1412.6980
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.Adam(params, lr=cfg["lr"])
+    lr_schedule = None
+    if cfg["backbone"] == "panderm_base":
+        # AdamW with layer-wise decay and a per-step cosine schedule (panderm.py).
+        # AdamW: Loshchilov & Hutter (2019), https://arxiv.org/abs/1711.05101
+        from panderm import layer_decay_groups, cosine_lr
+        optimizer = torch.optim.AdamW(layer_decay_groups(model, cfg["weight_decay"], cfg["layer_decay"]),
+                                      lr=cfg["lr"])
+        lr_schedule = cosine_lr(cfg["lr"], cfg["min_lr"], cfg["epochs"], len(train_loader),
+                                cfg["warmup_epochs"])
+    else:
+        optimizer = torch.optim.Adam(params, lr=cfg["lr"])
+    # Mixed precision: https://docs.pytorch.org/docs/stable/amp.html
+    # With enabled=False the scaler does nothing and the step is the plain one.
+    scaler = torch.amp.GradScaler("cuda", enabled=cfg["amp"])
+    step = 0
 
     history = []
     since = time.time()
@@ -207,16 +242,23 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 inputs = inputs.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True)
 
+                if lr_schedule is not None:
+                    for group in optimizer.param_groups:
+                        group["lr"] = lr_schedule[step] * group["lr_scale"]
+                step += 1
+
                 # zero the parameter gradients
                 optimizer.zero_grad()
 
                 # forward
-                outputs = model(inputs).squeeze(1)
-                loss = criterion(outputs, labels)
+                with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=cfg["amp"]):
+                    outputs = model(inputs).squeeze(1)
+                loss = criterion(outputs.float(), labels)
 
                 # backward + optimize
-                loss.backward()
-                optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
@@ -224,9 +266,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
             epoch_loss = running_loss / n_seen
             # Losses use this arm's own loss function, so compare them only within an arm.
-            clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device)
+            clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device, cfg["amp"])
             clean_auc = roc_auc_score(train_check.target, clean_probs)
-            val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
+            val_loss, val_probs = val_epoch(model, val_loader, criterion, device, cfg["amp"])
             val_auc = roc_auc_score(inner_val.target, val_probs)
 
             history.append({"epoch": epoch,
@@ -252,9 +294,9 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # like the out-of-fold prediction files written by [H] `evaluate.py`.
     preds = pd.concat([
         pd.DataFrame({"image_name": inner_val.image_name, "target": inner_val.target,
-                      "prob": predict(model, val_loader, device), "split": "inner_val"}),
+                      "prob": predict(model, val_loader, device, cfg["amp"]), "split": "inner_val"}),
         pd.DataFrame({"image_name": held.image_name, "target": held.target,
-                      "prob": predict(model, held_loader, device), "split": "held_fold"}),
+                      "prob": predict(model, held_loader, device, cfg["amp"]), "split": "held_fold"}),
     ])
     preds.to_csv(out / "preds.csv", index=False)
     pd.DataFrame(history).to_csv(out / "history.csv", index=False)

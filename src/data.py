@@ -144,8 +144,12 @@ def make_transform(train, augment=False, aug="base", size=256):
                 # One black square with side 0.375 of the image = 14% of its area.
                 transforms.RandomErasing(p=0.7, scale=(0.14, 0.14), ratio=(1.0, 1.0), value=0),
             ]
-    # Images are already size x size (Chris Deotte's resized datasets, one per size),
-    # so nothing else is needed without augmentation.
+    # Images are already stored at the model's size (Chris Deotte's resized datasets),
+    # except for PanDerm (224 px input from the 256 px images): without augmentation
+    # the image is centre-cropped to `size`, as in PanDerm's own evaluation transform.
+    # On an image that already has this size the crop changes nothing.
+    if not before:
+        before = [transforms.CenterCrop(size)]
     return transforms.Compose(before + [transforms.ToTensor()] + after
                               + [transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
