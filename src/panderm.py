@@ -110,25 +110,35 @@ def extract(model, df, device, batch_size=128, workers=2):
     return torch.cat(feats).numpy()
 
 
-def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None):
+def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=None):
     """Train the linear probe for one held-out fold and write the run folder.
 
     The same splits as every other run: train / inner_val from inner_split.csv,
     the held-out fold is only predicted. C is chosen by inner-validation AUROC,
     the same criterion that picks the best epoch in train.run.
+
+    extra: optional (features, targets) of ISIC 2019 images (isic2019.load_extra),
+    added to the training part only, as in train.run with extra_train="isic2019".
+    The run is then tagged panderm_isic2019.
     """
     start = time.time()
     index = pd.Series(np.arange(len(dev)), index=dev.image_name)
     tr, val = inner_split(dev, fold, splits_dir)
     held = dev[dev.fold == fold]
     X = {k: feats[index[d.image_name].values] for k, d in (("tr", tr), ("val", val), ("held", held))}
+    y_tr = tr.target.values
+    tag = "panderm"
+    if extra is not None:
+        X["tr"] = np.concatenate([X["tr"], extra[0]])
+        y_tr = np.concatenate([y_tr, extra[1]])
+        tag = "panderm_isic2019"
 
     scaler = StandardScaler().fit(X["tr"])
     X = {k: scaler.transform(v) for k, v in X.items()}
 
     history, best = [], None
     for C in C_GRID:
-        clf = LogisticRegression(C=C, max_iter=3000).fit(X["tr"], tr.target)
+        clf = LogisticRegression(C=C, max_iter=3000).fit(X["tr"], y_tr)
         p_val = clf.predict_proba(X["val"])[:, 1]
         row = {"C": C, "val_auroc": roc_auc_score(val.target, p_val),
                "val_auprc": average_precision_score(val.target, p_val)}
@@ -139,9 +149,12 @@ def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None):
     row, clf = best
 
     cfg = {"arm": "E0", "depth": "frozen", "backbone": "panderm_base", "img_size": 224,
-           "fold": fold, "seed": 0, "tag": "panderm", "probe": "logistic_regression",
+           "fold": fold, "seed": 0, "tag": tag, "probe": "logistic_regression",
            "C": row["C"], "C_grid": C_GRID, "augment": False, **(extra_cfg or {})}
-    name = f"E0_frozen_f{fold}_s0_panderm"
+    if extra is not None:
+        cfg.update({"extra_train": "isic2019", "n_extra": int(len(extra[1])),
+                    "n_extra_melanomas": int(np.sum(extra[1]))})
+    name = f"E0_frozen_f{fold}_s0_{tag}"
     out = Path(runs_dir) / name
     out.mkdir(parents=True, exist_ok=True)
     preds = pd.concat([
