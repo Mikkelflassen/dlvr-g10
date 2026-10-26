@@ -49,6 +49,13 @@ def set_seed(seed=0):
     torch.backends.cudnn.deterministic = True
 
 
+def _forward(model, inputs, device):
+    """One forward pass; inputs is an image batch, or [images, metadata] (M12 metadata step)."""
+    if isinstance(inputs, (list, tuple)):
+        return model(*[t.to(device, non_blocking=True) for t in inputs])
+    return model(inputs.to(device, non_blocking=True))
+
+
 def val_epoch(model, loader, criterion, device, amp=False):
     """Adapted from [H] `val_epoch`: loss and probabilities over the whole loader.
 
@@ -60,15 +67,15 @@ def val_epoch(model, loader, criterion, device, amp=False):
     PROBS = []
     with torch.no_grad():
         for (data, target) in loader:
-            data, target = data.to(device), target.to(device)
+            target = target.to(device)
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=amp):
-                logits = model(data).squeeze(1)
+                logits = _forward(model, data, device).squeeze(1)
             logits = logits.float()
             probs = logits.sigmoid()
             PROBS.append(probs.detach().cpu())
 
             loss = criterion(logits, target)
-            val_loss += loss.item() * data.size(0)
+            val_loss += loss.item() * target.size(0)
 
     PROBS = torch.cat(PROBS).numpy()
     return val_loss / len(PROBS), PROBS
@@ -80,9 +87,8 @@ def predict(model, loader, device, amp=False):
     PROBS = []
     with torch.no_grad():
         for (data, target) in loader:
-            data = data.to(device)
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=amp):
-                logits = model(data).squeeze(1)
+                logits = _forward(model, data, device).squeeze(1)
             probs = logits.float().sigmoid()
             PROBS.append(probs.detach().cpu())
     return torch.cat(PROBS).numpy()
@@ -122,6 +128,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # does not fit the time budget without it; every earlier run is unchanged.
     cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
+    cfg.setdefault("meta", False)                  # True: age, sex, body site next to the image (meta.py)
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))
@@ -166,15 +173,29 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
         from isic2019 import load_extra
         ext = load_extra(splits_dir, cfg["extra_root"])
         cfg.update({"n_extra": int(len(ext)), "n_extra_melanomas": int(ext.target.sum())})
-        tr = pd.concat([tr[["image_name", "target", "path"]], ext], ignore_index=True)
+        if cfg["meta"]:
+            from meta import meta_2019
+            ext = ext.merge(meta_2019(cfg["extra_root"]), on="image_name", how="left")
+            tr = tr[["image_name", "target", "path", "sex", "age_approx", "anatom_site_general_challenge"]]
+        else:
+            tr = tr[["image_name", "target", "path"]]
+        tr = pd.concat([tr, ext], ignore_index=True)
     elif cfg.get("extra_train"):
         raise ValueError(f"unknown extra_train {cfg['extra_train']!r}")
 
-    train_loader = make_loader(tr, cfg["batch_size"], train=True,
+    meta_cols = None
+    if cfg["meta"]:
+        from meta import add_meta, META_COLS
+        meta_cols = META_COLS
+        tr, inner_val, held = add_meta(tr, "train"), add_meta(inner_val, "inner_val"), add_meta(held, "held")
+        tr_2020 = add_meta(tr_2020, "train 2020")
+
+    train_loader = make_loader(tr, cfg["batch_size"], train=True, meta_cols=meta_cols,
                                augment=cfg["augment"], balanced=cfg["balanced"],
                                aug=cfg["aug"], workers=cfg["workers"],
                                mal_frac=cfg.get("mal_frac", 0.5), size=cfg["img_size"])
-    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
+    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
+                             meta_cols=meta_cols)
     # A fixed sample of training images, the same size as inner_val, evaluated each
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
     # between training and validation performance (train_loss above is measured on
@@ -183,14 +204,23 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # ISIC 2019 is added (M12 step isic2019).
     train_check = tr_2020.sample(n=min(len(inner_val), len(tr_2020)),
                             random_state=cfg["seed"]).reset_index(drop=True)
-    check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
-    held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"])
+    check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
+                               meta_cols=meta_cols)
+    held_loader = make_loader(held, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
+                              meta_cols=meta_cols)
 
     if cfg["backbone"] == "panderm_base":
         if cfg["depth"] != "full":
             raise ValueError("panderm_base in train.run is full fine-tuning; the frozen version is panderm.probe_fold")
         from panderm import build_finetune
-        model = build_finetune(cfg["panderm_repo"], cfg["panderm_ckpt"], cfg["drop_path"]).to(device)
+        model = build_finetune(cfg["panderm_repo"], cfg["panderm_ckpt"], cfg["drop_path"])
+        if cfg["meta"]:
+            from meta import WithMeta
+            model.head = torch.nn.Identity()       # the 768 CLS features go to WithMeta's own head
+            model = WithMeta(model, n_features=768)
+        model = model.to(device)
+    elif cfg["meta"]:
+        raise ValueError("meta is only implemented for backbone panderm_base")
     else:
         model = build_model(cfg["depth"], cfg["backbone"]).to(device)
     criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
@@ -239,7 +269,6 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
             # Iterate over data.
             for inputs, labels in train_loader:
-                inputs = inputs.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True)
 
                 if lr_schedule is not None:
@@ -252,7 +281,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
                 # forward
                 with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=cfg["amp"]):
-                    outputs = model(inputs).squeeze(1)
+                    outputs = _forward(model, inputs, device).squeeze(1)
                 loss = criterion(outputs.float(), labels)
 
                 # backward + optimize
@@ -261,8 +290,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 scaler.update()
 
                 # statistics
-                running_loss += loss.item() * inputs.size(0)
-                n_seen += inputs.size(0)
+                running_loss += loss.item() * labels.size(0)
+                n_seen += labels.size(0)
 
             epoch_loss = running_loss / n_seen
             # Losses use this arm's own loss function, so compare them only within an arm.

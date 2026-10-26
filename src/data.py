@@ -161,9 +161,11 @@ class ISICDataset(Dataset):
     metadata branch, float target for a single-logit BCE output.
     """
 
-    def __init__(self, csv, transform=None):
+    def __init__(self, csv, transform=None, meta_cols=None):
         self.csv = csv.reset_index(drop=True)
         self.transform = transform
+        # M12 metadata step: ((image, metadata), target) instead of (image, target).
+        self.meta = None if meta_cols is None else self.csv[list(meta_cols)].to_numpy(np.float32)
 
     def __len__(self):
         return self.csv.shape[0]
@@ -175,6 +177,8 @@ class ISICDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
 
+        if self.meta is not None:
+            return (image, torch.from_numpy(self.meta[index])), torch.tensor(row.target).float()
         return image, torch.tensor(row.target).float()
 
 
@@ -193,10 +197,10 @@ def sampling_weights(target, mal_frac):
 
 
 def make_loader(df, batch_size=64, train=False, augment=False,
-                balanced=False, workers=2, aug="base", mal_frac=0.5, size=256):
+                balanced=False, workers=2, aug="base", mal_frac=0.5, size=256, meta_cols=None):
     """balanced=True is E2: oversample malignant so that on average a share
     `mal_frac` of the training images drawn is malignant (0.5 = 50/50)."""
-    ds = ISICDataset(df, make_transform(train, augment, aug, size))
+    ds = ISICDataset(df, make_transform(train, augment, aug, size), meta_cols)
     if train and balanced:
         # Adapted from ptrblck's answer in the PyTorch forum thread
         # "How to handle imbalanced classes" (post 2):
@@ -209,6 +213,8 @@ def make_loader(df, batch_size=64, train=False, augment=False,
     # Evaluation loaders get their own random generator, so that evaluating (which
     # starts worker processes) never draws from the global RNG that training uses.
     # https://docs.pytorch.org/docs/stable/notes/randomness.html#dataloader
+    # drop_last only with metadata: its batch norm cannot train on a last batch of 1 image.
     return DataLoader(ds, batch_size=batch_size, shuffle=train,
                       num_workers=workers, pin_memory=True,
+                      drop_last=train and meta_cols is not None,
                       generator=None if train else torch.Generator().manual_seed(0))

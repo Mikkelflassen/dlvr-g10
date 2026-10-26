@@ -141,6 +141,8 @@ def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
+        # inside meta.WithMeta the ViT is `backbone`; its metadata network and head count as the top
+        name = name[len("backbone."):] if name.startswith("backbone.") else name
         no_wd = param.ndim == 1 or name.endswith(".bias") or name in ("cls_token", "pos_embed")
         lid = _layer_id(name, n_layers)
         key = (lid, no_wd)
