@@ -94,6 +94,65 @@ def predict(model, loader, device, amp=False):
     return torch.cat(PROBS).numpy()
 
 
+def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader, train_check,
+              device, history, since):
+    """Arm E6, stage 2: fine-tune the stage-1 (plain BCE) network with the AUC-margin loss.
+
+    Deep AUC maximisation, Yuan et al. (ICCV 2021), https://arxiv.org/abs/2012.03173,
+    with the LibAUC library (https://libauc.org, https://github.com/Optimization-AI/LibAUC):
+    the network is first trained with cross-entropy (stage 1 = our E0), then the
+    final layer is re-initialised and the whole network is trained with AUCMLoss
+    and the PESG optimizer. AUCMLoss works on pairs of classes through running
+    statistics (a, b, alpha), so it needs no special sampler; p = the share of
+    melanomas in the whole training set (imratio, auto=False) instead of per batch.
+    Settings are LibAUC's defaults and tutorial schedule: lr 0.1, margin 1.0,
+    epoch_decay 0.002, weight_decay 1e-5, learning rate / 10 halfway.
+    Best epoch: highest inner-validation AUROC within stage 2, as in every run.
+    """
+    import warnings
+    from libauc.losses import AUCMLoss
+    from libauc.optimizers import PESG
+
+    model.fc.reset_parameters()                       # "re-initialise the classifier layer"
+    aucm = AUCMLoss(margin=cfg["margin"], imratio=float(tr.target.mean()))
+    def criterion(logits, target):
+        return aucm(torch.sigmoid(logits), target, auto=False)
+    optimizer = PESG(model.parameters(), loss_fn=aucm, lr=cfg["auc_lr"], margin=cfg["margin"],
+                     epoch_decay=cfg["epoch_decay"], weight_decay=cfg["auc_weight_decay"],
+                     verbose=False)
+    best_auc, best_state = -1.0, None
+    for epoch in range(cfg["auc_epochs"]):
+        if epoch == cfg["auc_epochs"] // 2:
+            optimizer.update_regularizer(decay_factor=10)
+        model.train()
+        running_loss, n_seen = 0.0, 0
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)   # batches without a melanoma are expected
+            for inputs, labels in train_loader:
+                labels = labels.to(device, non_blocking=True)
+                loss = criterion(_forward(model, inputs, device).squeeze(1), labels)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item() * labels.size(0)
+                n_seen += labels.size(0)
+            clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device)
+            val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
+        clean_auc = roc_auc_score(train_check.target, clean_probs)
+        val_auc = roc_auc_score(inner_val.target, val_probs)
+        history.append({"epoch": cfg["epochs"] + epoch, "stage": "auc",
+                        "train_loss": running_loss / n_seen, "train_clean_loss": float(clean_loss),
+                        "train_clean_auroc": float(clean_auc), "val_loss": float(val_loss),
+                        "val_auroc": float(val_auc), "minutes": round((time.time() - since) / 60, 2)})
+        print(f"  AUC epoch {epoch}  loss {running_loss / n_seen:.4f}  "
+              f"train-clean AUROC {clean_auc:.4f}  val AUROC {val_auc:.4f}")
+        if val_auc > best_auc:
+            best_auc = val_auc
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    model.load_state_dict(best_state)
+    return best_auc
+
+
 def run(cfg, splits_dir, data_root, runs_dir, device=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
                  pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
@@ -128,6 +187,14 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # does not fit the time budget without it; every earlier run is unchanged.
     cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
+    if cfg["arm"] == "E6":
+        cfg.setdefault("auc_epochs", 4)
+        cfg.setdefault("auc_lr", 0.1)
+        cfg.setdefault("margin", 1.0)
+        cfg.setdefault("epoch_decay", 0.002)
+        cfg.setdefault("auc_weight_decay", 1e-5)
+        if cfg["backbone"] != "resnet18":
+            raise ValueError("E6 is set up for ResNet-18 (model.fc)")
     cfg.setdefault("meta", False)                  # True: age, sex, body site next to the image (meta.py)
     # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
     # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
@@ -318,6 +385,12 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
 
         # load best model weights
         model.load_state_dict(torch.load(best_model_params_path, map_location=device))
+
+    # Arm E6: stage 1 above was plain BCE; stage 2 trains with the AUC-margin loss.
+    if cfg["arm"] == "E6":
+        cfg["stage1_best_inner_auroc"] = best_auc
+        best_auc = auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
+                             train_check, device, history, since)
 
     # Per-image predictions are saved so that every metric can be computed later,
     # like the out-of-fold prediction files written by [H] `evaluate.py`.

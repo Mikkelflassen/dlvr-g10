@@ -13,6 +13,7 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
     E2       : plain BCE + balanced sampler (see data.make_loader)
     E3       : focal loss
     E5       : focal loss + E2's sampler (E2 and E3 combined, workflow Phase 4)
+    E6       : plain BCE in stage 1; stage 2 uses the AUC-margin loss (train.auc_stage)
     """
     if arm == "E1":
         # Library: torch.nn.BCEWithLogitsLoss, pos_weight argument.

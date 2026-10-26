@@ -1,11 +1,12 @@
 {
-  "E0_frozen":  {"arm": "E0", "depth": "frozen", "epochs": 8},
-  "E0_full":    {"arm": "E0", "depth": "full",   "epochs": 8},
-  "E1_frozen":  {"arm": "E1", "depth": "frozen", "epochs": 8, "pos_weight": 21},
-  "E1_full":    {"arm": "E1", "depth": "full",   "epochs": 8, "pos_weight": 21},
-  "E2_frozen":  {"arm": "E2", "depth": "frozen", "epochs": 8, "mal_frac": 0.15},
-  "E2_full":    {"arm": "E2", "depth": "full",   "epochs": 8, "mal_frac": 0.15},
-  "E3_frozen":  {"arm": "E3", "depth": "frozen", "epochs": 8, "gamma": 2.0},
-  "E3_full":    {"arm": "E3", "depth": "full",   "epochs": 8, "gamma": 2.0},
-  "E5_full":    {"arm": "E5", "depth": "full",   "epochs": 8, "mal_frac": 0.15, "gamma": 2.0}
+  "E0_frozen": {"arm": "E0", "depth": "frozen", "epochs": 8},
+  "E0_full":   {"arm": "E0", "depth": "full", "epochs": 8},
+  "E1_frozen": {"arm": "E1", "depth": "frozen", "epochs": 8, "pos_weight": 21},
+  "E1_full":   {"arm": "E1", "depth": "full", "epochs": 8, "pos_weight": 21},
+  "E2_frozen": {"arm": "E2", "depth": "frozen", "epochs": 8, "mal_frac": 0.15},
+  "E2_full":   {"arm": "E2", "depth": "full", "epochs": 8, "mal_frac": 0.15},
+  "E3_frozen": {"arm": "E3", "depth": "frozen", "epochs": 8, "gamma": 2.0},
+  "E3_full":   {"arm": "E3", "depth": "full", "epochs": 8, "gamma": 2.0},
+  "E5_full":   {"arm": "E5", "depth": "full", "epochs": 8, "mal_frac": 0.15, "gamma": 2.0},
+  "E6_full":   {"arm": "E6", "depth": "full", "epochs": 8, "auc_epochs": 4}
 }
