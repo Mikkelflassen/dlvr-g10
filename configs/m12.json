@@ -4,5 +4,6 @@
   "isic2019":                 {"extra_train": "isic2019"},
   "panderm_ft":               {"backbone": "panderm_base", "img_size": 224, "data_size": 256, "lr": 0.00025, "epochs": 8},
   "panderm_ft_isic2019":      {"backbone": "panderm_base", "img_size": 224, "data_size": 256, "lr": 0.00025, "epochs": 8, "extra_train": "isic2019"},
-  "panderm_ft_isic2019_meta": {"backbone": "panderm_base", "img_size": 224, "data_size": 256, "lr": 0.00025, "epochs": 8, "extra_train": "isic2019", "meta": true}
+  "panderm_ft_isic2019_meta": {"backbone": "panderm_base", "img_size": 224, "data_size": 256, "lr": 0.00025, "epochs": 8, "extra_train": "isic2019", "meta": true},
+  "panderm_ft_isic2019_e50":  {"backbone": "panderm_base", "img_size": 224, "data_size": 256, "lr": 0.00025, "epochs": 50, "extra_train": "isic2019", "warmup_epochs": 10, "track_held": true}
 }

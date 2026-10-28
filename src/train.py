@@ -23,7 +23,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 from data import load_splits, inner_split, make_loader, sampling_weights
 from models import build_model, default_lr
@@ -366,6 +366,13 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
             clean_auc = roc_auc_score(train_check.target, clean_probs)
             val_loss, val_probs = val_epoch(model, val_loader, criterion, device, cfg["amp"])
             val_auc = roc_auc_score(inner_val.target, val_probs)
+            # track_held (long-training check only): also score the held-out fold every
+            # epoch, to draw its curve. Only recorded, never used to pick the epoch.
+            held_track = {}
+            if cfg.get("track_held"):
+                _, held_probs = val_epoch(model, held_loader, criterion, device, cfg["amp"])
+                held_track = {"held_auroc": float(roc_auc_score(held.target, held_probs)),
+                              "held_auprc": float(average_precision_score(held.target, held_probs))}
 
             history.append({"epoch": epoch,
                             "train_loss": float(epoch_loss),            # augmented, during training
@@ -374,7 +381,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                             "val_loss": float(val_loss),
                             "val_auroc": float(val_auc),
                             "minutes": round((time.time() - since) / 60, 2),
-                            **({"mal_frac": round(share, 4)} if share is not None else {})})
+                            **({"mal_frac": round(share, 4)} if share is not None else {}),
+                            **held_track})
             print(f"  epoch {epoch}  loss {epoch_loss:.4f}  "
                   f"train-clean AUROC {clean_auc:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
 
