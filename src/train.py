@@ -153,7 +153,7 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
     return best_auc
 
 
-def run(cfg, splits_dir, data_root, runs_dir, device=None):
+def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoch_hook=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
                  pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
 
@@ -318,14 +318,42 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
     # best epoch and is reloaded at the end. The best epoch is chosen by validation
     # AUROC as in [H] (`if auc > auc_max: torch.save(...)`), not by accuracy as in [T]
     # — and not by loss, which is not comparable across arms.
+    #
+    # resume_dir (long runs only): after every epoch the full training state is saved
+    # there (e.g. on Google Drive), so a run cut off by a Colab disconnect continues
+    # from its last finished epoch instead of starting over. The order of the images
+    # after a resume differs from an uninterrupted run; nothing else does.
+    # https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html
+    # epoch_hook(out, epoch): called after every epoch, e.g. to push history.csv.
     with TemporaryDirectory() as tempdir:
-        best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
+        state_path = None
+        if resume_dir:
+            Path(resume_dir).mkdir(parents=True, exist_ok=True)
+            best_model_params_path = os.path.join(resume_dir, f"{name}_best.pt")
+            state_path = os.path.join(resume_dir, f"{name}_state.pt")
+        else:
+            best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
 
-        torch.save(model.state_dict(), best_model_params_path)
         best_auc = -1.0
+        start_epoch = 0
+        if state_path and os.path.exists(state_path):
+            st = torch.load(state_path, map_location=device, weights_only=False)
+            model.load_state_dict(st["model"])
+            optimizer.load_state_dict(st["optimizer"])
+            scaler.load_state_dict(st["scaler"])
+            step, best_auc, history = st["step"], st["best_auc"], st["history"]
+            start_epoch = st["epoch"] + 1
+            since -= st["minutes"] * 60
+            torch.set_rng_state(st["rng_torch"]); np.random.set_state(st["rng_numpy"])
+            random.setstate(st["rng_python"])
+            cfg["resumed_at_epoch"] = cfg.get("resumed_at_epoch", []) + [start_epoch]
+            print(f"  resumed from {state_path}: epoch {start_epoch} of {cfg['epochs']}, "
+                  f"best inner AUROC so far {best_auc:.4f}")
+        else:
+            torch.save(model.state_dict(), best_model_params_path)
 
         natural = float(tr.target.mean())
-        for epoch in range(cfg["epochs"]):
+        for epoch in range(start_epoch, cfg["epochs"]):
             share = None
             if cfg.get("sampling") == "progressive":
                 share = natural + epoch / max(cfg["epochs"] - 1, 1) * (cfg["mal_frac"] - natural)
@@ -391,6 +419,18 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 best_auc = val_auc
                 torch.save(model.state_dict(), best_model_params_path)
 
+            pd.DataFrame(history).to_csv(out / "history.csv", index=False)   # progress so far
+            if state_path:
+                torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
+                            "scaler": scaler.state_dict(), "step": step, "epoch": epoch,
+                            "best_auc": best_auc, "history": history,
+                            "minutes": (time.time() - since) / 60,
+                            "rng_torch": torch.get_rng_state(), "rng_numpy": np.random.get_state(),
+                            "rng_python": random.getstate()}, state_path + ".tmp")
+                os.replace(state_path + ".tmp", state_path)     # never a half-written file
+            if epoch_hook:
+                epoch_hook(out, epoch)
+
         # load best model weights
         model.load_state_dict(torch.load(best_model_params_path, map_location=device))
 
@@ -415,4 +455,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None):
                 "minutes": round((time.time() - since) / 60, 2)})
     (out / "config.json").write_text(json.dumps(cfg, indent=2))
     print(f"{name}: best inner AUROC {best_auc:.4f}  ({cfg['minutes']} min)")
+    if state_path:                         # run finished: the resume files are not needed
+        for p in (state_path, best_model_params_path):
+            if os.path.exists(p):
+                os.remove(p)
     return out
