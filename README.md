@@ -215,10 +215,11 @@ limitation in Methods rather than pretending otherwise.
 README.md
 configs/    arms.json  m12.json
 notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb  G10_m12.ipynb
-            G10_panderm.ipynb  G10_isic2019_check.ipynb
+            G10_panderm.ipynb  G10_isic2019_check.ipynb  G10_test.ipynb
 splits/     dev_split.csv  test_split.csv  inner_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
-            panderm.py  check_institutions.py  isic2019.py  meta.py
+            panderm.py  check_institutions.py  isic2019.py  meta.py  test_eval.py
+docs/       test_protocol.md   (M13, fixed before the test set was opened)
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
             tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
                    one folder per experiment, each with a summary.md table

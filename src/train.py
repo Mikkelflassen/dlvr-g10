@@ -137,17 +137,22 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
                 running_loss += loss.item() * labels.size(0)
                 n_seen += labels.size(0)
             clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device)
-            val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
+            if inner_val is not None:
+                val_loss, val_probs = val_epoch(model, val_loader, criterion, device)
         clean_auc = roc_auc_score(train_check.target, clean_probs)
-        val_auc = roc_auc_score(inner_val.target, val_probs)
+        if inner_val is None:            # final run: no validation set, the last epoch is kept
+            val_loss, val_auc, select = float("nan"), float("nan"), float(epoch)
+        else:
+            val_auc = roc_auc_score(inner_val.target, val_probs)
+            select = val_auc
         history.append({"epoch": cfg["epochs"] + epoch, "stage": "auc",
                         "train_loss": running_loss / n_seen, "train_clean_loss": float(clean_loss),
                         "train_clean_auroc": float(clean_auc), "val_loss": float(val_loss),
                         "val_auroc": float(val_auc), "minutes": round((time.time() - since) / 60, 2)})
         print(f"  AUC epoch {epoch}  loss {running_loss / n_seen:.4f}  "
               f"train-clean AUROC {clean_auc:.4f}  val AUROC {val_auc:.4f}")
-        if val_auc > best_auc:
-            best_auc = val_auc
+        if select > best_auc:
+            best_auc = select
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
     model.load_state_dict(best_state)
     return best_auc
@@ -223,16 +228,24 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     set_seed(cfg["seed"])
 
-    name = f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}"
+    # final=True (M13, the test set): train on ALL dev images, no inner validation, keep
+    # the last epoch, and predict the locked test set. Decided before the test set was
+    # opened: docs/test_protocol.md.
+    final = bool(cfg.get("final"))
+    name = (f"{cfg['arm']}_{cfg['depth']}_final_s{cfg['seed']}" if final
+            else f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}")
     if cfg.get("tag"):
         name += "_" + cfg["tag"]
     out = Path(runs_dir) / name
     out.mkdir(parents=True, exist_ok=True)
 
     # Folds as in [H] `run`: df[df['fold'] != fold] trains, df[df['fold'] == fold] is held out.
-    dev, _ = load_splits(splits_dir, data_root)
-    tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
-    held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
+    dev, test = load_splits(splits_dir, data_root)
+    if final:
+        tr, inner_val, held = dev.reset_index(drop=True), None, test.reset_index(drop=True)
+    else:
+        tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
+        held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
     tr_2020 = tr
     # M12 step `isic2019`: extra training images only. inner_val and the held-out
     # fold stay pure ISIC 2020, so every number stays comparable with the grid.
@@ -254,14 +267,15 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     if cfg["meta"]:
         from meta import add_meta, META_COLS
         meta_cols = META_COLS
-        tr, inner_val, held = add_meta(tr, "train"), add_meta(inner_val, "inner_val"), add_meta(held, "held")
+        tr, held = add_meta(tr, "train"), add_meta(held, "held")
+        inner_val = None if inner_val is None else add_meta(inner_val, "inner_val")
         tr_2020 = add_meta(tr_2020, "train 2020")
 
     train_loader = make_loader(tr, cfg["batch_size"], train=True, meta_cols=meta_cols,
                                augment=cfg["augment"], balanced=cfg["balanced"],
                                aug=cfg["aug"], workers=cfg["workers"],
                                mal_frac=cfg.get("mal_frac", 0.5), size=cfg["img_size"])
-    val_loader = make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
+    val_loader = None if inner_val is None else make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
                              meta_cols=meta_cols)
     # A fixed sample of training images, the same size as inner_val, evaluated each
     # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
@@ -269,7 +283,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     # augmented images, so it rises with heavier augmentation by construction).
     # Drawn from the ISIC 2020 training images only, so it stays comparable when
     # ISIC 2019 is added (M12 step isic2019).
-    train_check = tr_2020.sample(n=min(len(inner_val), len(tr_2020)),
+    n_check = 4500 if inner_val is None else len(inner_val)
+    train_check = tr_2020.sample(n=min(n_check, len(tr_2020)),
                             random_state=cfg["seed"]).reset_index(drop=True)
     check_loader = make_loader(train_check, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
                                meta_cols=meta_cols)
@@ -392,8 +407,11 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
             # Losses use this arm's own loss function, so compare them only within an arm.
             clean_loss, clean_probs = val_epoch(model, check_loader, criterion, device, cfg["amp"])
             clean_auc = roc_auc_score(train_check.target, clean_probs)
-            val_loss, val_probs = val_epoch(model, val_loader, criterion, device, cfg["amp"])
-            val_auc = roc_auc_score(inner_val.target, val_probs)
+            if inner_val is None:        # final run: no validation set
+                val_loss, val_auc = float("nan"), float("nan")
+            else:
+                val_loss, val_probs = val_epoch(model, val_loader, criterion, device, cfg["amp"])
+                val_auc = roc_auc_score(inner_val.target, val_probs)
             # track_held (long-training check only): also score the held-out fold every
             # epoch, to draw its curve. Only recorded, never used to pick the epoch.
             held_track = {}
@@ -415,7 +433,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
                   f"train-clean AUROC {clean_auc:.4f}  val loss {val_loss:.4f}  val AUROC {val_auc:.4f}")
 
             # keep the best epoch
-            if val_auc > best_auc:
+            if final or val_auc > best_auc:      # final run: always the last epoch
                 best_auc = val_auc
                 torch.save(model.state_dict(), best_model_params_path)
 
@@ -442,16 +460,20 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     # Per-image predictions are saved so that every metric can be computed later,
     # like the out-of-fold prediction files written by [H] `evaluate.py`.
-    preds = pd.concat([
-        pd.DataFrame({"image_name": inner_val.image_name, "target": inner_val.target,
-                      "prob": predict(model, val_loader, device, cfg["amp"]), "split": "inner_val"}),
-        pd.DataFrame({"image_name": held.image_name, "target": held.target,
-                      "prob": predict(model, held_loader, device, cfg["amp"]), "split": "held_fold"}),
-    ])
+    if final:
+        preds = pd.DataFrame({"image_name": held.image_name, "target": held.target,
+                              "prob": predict(model, held_loader, device, cfg["amp"]), "split": "test"})
+    else:
+        preds = pd.concat([
+            pd.DataFrame({"image_name": inner_val.image_name, "target": inner_val.target,
+                          "prob": predict(model, val_loader, device, cfg["amp"]), "split": "inner_val"}),
+            pd.DataFrame({"image_name": held.image_name, "target": held.target,
+                          "prob": predict(model, held_loader, device, cfg["amp"]), "split": "held_fold"}),
+        ])
     preds.to_csv(out / "preds.csv", index=False)
     pd.DataFrame(history).to_csv(out / "history.csv", index=False)
 
-    cfg.update({"run": name, "git": _git_hash(), "best_inner_auroc": best_auc,
+    cfg.update({"run": name, "git": _git_hash(), "best_inner_auroc": None if final else best_auc,
                 "minutes": round((time.time() - since) / 60, 2)})
     (out / "config.json").write_text(json.dumps(cfg, indent=2))
     print(f"{name}: best inner AUROC {best_auc:.4f}  ({cfg['minutes']} min)")

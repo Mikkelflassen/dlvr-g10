@@ -1,0 +1,49 @@
+{
+  "decided": "2026-11-02",
+  "threshold_rule": "score at which 80% of the melanomas are found in the pooled out-of-fold (held-out fold) predictions of the 5 fold runs",
+  "models": {
+    "winner": {
+      "config": {
+        "arm": "E0",
+        "depth": "full",
+        "epochs": 8,
+        "backbone": "panderm_base",
+        "img_size": 224,
+        "data_size": 256,
+        "lr": 0.00025,
+        "extra_train": "isic2019",
+        "final": true,
+        "seed": 0,
+        "tag": "panderm_ft_isic2019"
+      },
+      "threshold_80": 0.018055,
+      "oof_melanomas": 499,
+      "oof_false_alarms_at_threshold": 3766
+    },
+    "E0": {
+      "config": {
+        "arm": "E0",
+        "depth": "full",
+        "epochs": 8,
+        "final": true,
+        "seed": 0
+      },
+      "threshold_80": 0.011238,
+      "oof_melanomas": 499,
+      "oof_false_alarms_at_threshold": 6515
+    },
+    "E6": {
+      "config": {
+        "arm": "E6",
+        "depth": "full",
+        "epochs": 8,
+        "auc_epochs": 4,
+        "final": true,
+        "seed": 0
+      },
+      "threshold_80": 0.122224,
+      "oof_melanomas": 499,
+      "oof_false_alarms_at_threshold": 5581
+    }
+  }
+}
