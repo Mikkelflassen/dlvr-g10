@@ -1,0 +1,23 @@
+{
+  "arm": "E0",
+  "depth": "full",
+  "epochs": 8,
+  "final": true,
+  "seed": 0,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "augment": true,
+  "aug": "light",
+  "img_size": 256,
+  "backbone": "resnet18",
+  "extra_train": null,
+  "amp": false,
+  "extra_root": "/content/isic2019",
+  "meta": false,
+  "workers": 2,
+  "balanced": false,
+  "run": "E0_full_final_s0",
+  "git": "70c2007",
+  "best_inner_auroc": null,
+  "minutes": 29.45
+}
