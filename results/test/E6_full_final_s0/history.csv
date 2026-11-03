@@ -1,0 +1,2 @@
+epoch,train_loss,train_clean_loss,train_clean_auroc,val_loss,val_auroc,minutes
+0,0.09740303047098267,0.06640385737766823,0.83500959969124,,,3.56
