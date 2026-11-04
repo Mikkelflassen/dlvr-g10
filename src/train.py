@@ -359,7 +359,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
             step, best_auc, history = st["step"], st["best_auc"], st["history"]
             start_epoch = st["epoch"] + 1
             since -= st["minutes"] * 60
-            torch.set_rng_state(st["rng_torch"]); np.random.set_state(st["rng_numpy"])
+            # map_location moved the RNG state to the GPU; set_rng_state needs it on the CPU
+            torch.set_rng_state(st["rng_torch"].cpu().to(torch.uint8)); np.random.set_state(st["rng_numpy"])
             random.setstate(st["rng_python"])
             cfg["resumed_at_epoch"] = cfg.get("resumed_at_epoch", []) + [start_epoch]
             print(f"  resumed from {state_path}: epoch {start_epoch} of {cfg['epochs']}, "
