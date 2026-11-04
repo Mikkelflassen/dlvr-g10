@@ -1,0 +1,151 @@
+{
+  "protocol": {
+    "decided": "2026-11-02",
+    "threshold_rule": "score at which 80% of the melanomas are found in the pooled out-of-fold (held-out fold) predictions of the 5 fold runs",
+    "models": {
+      "winner": {
+        "config": {
+          "arm": "E0",
+          "depth": "full",
+          "epochs": 8,
+          "backbone": "panderm_base",
+          "img_size": 224,
+          "data_size": 256,
+          "lr": 0.00025,
+          "extra_train": "isic2019",
+          "final": true,
+          "seed": 0,
+          "tag": "panderm_ft_isic2019"
+        },
+        "threshold_80": 0.018055,
+        "oof_melanomas": 499,
+        "oof_false_alarms_at_threshold": 3766
+      },
+      "E0": {
+        "config": {
+          "arm": "E0",
+          "depth": "full",
+          "epochs": 8,
+          "final": true,
+          "seed": 0
+        },
+        "threshold_80": 0.011238,
+        "oof_melanomas": 499,
+        "oof_false_alarms_at_threshold": 6515
+      },
+      "E6": {
+        "config": {
+          "arm": "E6",
+          "depth": "full",
+          "epochs": 8,
+          "auc_epochs": 4,
+          "final": true,
+          "seed": 0
+        },
+        "threshold_80": 0.122224,
+        "oof_melanomas": 499,
+        "oof_false_alarms_at_threshold": 5581
+      }
+    }
+  },
+  "n_images": 4630,
+  "n_melanomas": 82,
+  "n_patients": 309,
+  "n_bootstrap": 2000,
+  "models": {
+    "winner": {
+      "auprc": 0.2913798175773011,
+      "auroc": 0.9363000622090654,
+      "ece": 0.008329695053933262,
+      "found": 71,
+      "malignant": 82,
+      "false_alarms": 561,
+      "malignant_accuracy": 0.8658536585365854,
+      "benign_accuracy": 0.8766490765171504,
+      "malignant_calls_right": 0.11234177215189874,
+      "auprc_without_qld_sydney": 0.3199448975668849,
+      "auprc_ci95": [
+        0.1966619979548647,
+        0.39414608745304947
+      ],
+      "auroc_ci95": [
+        0.9139068304286088,
+        0.9544068026374001
+      ]
+    },
+    "E0": {
+      "auprc": 0.15366133493334994,
+      "auroc": 0.8698945663599116,
+      "ece": 0.005342803999139027,
+      "found": 62,
+      "malignant": 82,
+      "false_alarms": 1002,
+      "malignant_accuracy": 0.7560975609756098,
+      "benign_accuracy": 0.7796833773087071,
+      "malignant_calls_right": 0.05827067669172932,
+      "auprc_without_qld_sydney": 0.17061906039404387,
+      "auprc_ci95": [
+        0.09240192988846768,
+        0.23667223377314442
+      ],
+      "auroc_ci95": [
+        0.8290597195871078,
+        0.9052870075360873
+      ]
+    },
+    "E6": {
+      "auprc": 0.18701279947689922,
+      "auroc": 0.8825616191518116,
+      "ece": 0.1014251291254498,
+      "found": 61,
+      "malignant": 82,
+      "false_alarms": 958,
+      "malignant_accuracy": 0.7439024390243902,
+      "benign_accuracy": 0.7893579595426561,
+      "malignant_calls_right": 0.05986261040235525,
+      "auprc_without_qld_sydney": 0.23056880061101995,
+      "auprc_ci95": [
+        0.11271121591092588,
+        0.2894867145455252
+      ],
+      "auroc_ci95": [
+        0.8453997858922524,
+        0.9150961974326589
+      ]
+    }
+  },
+  "differences": {
+    "winner - E0 auprc": {
+      "diff": 0.13771848264395115,
+      "ci95": [
+        0.05915521296483475,
+        0.21770830487707934
+      ],
+      "share_of_resamples_above_0": 1.0
+    },
+    "winner - E0 auroc": {
+      "diff": 0.06640549584915378,
+      "ci95": [
+        0.03707559950782834,
+        0.10128454768631659
+      ],
+      "share_of_resamples_above_0": 1.0
+    },
+    "E6 - E0 auprc": {
+      "diff": 0.033351464543549286,
+      "ci95": [
+        0.00872175961787896,
+        0.06676765616727798
+      ],
+      "share_of_resamples_above_0": 0.996
+    },
+    "E6 - E0 auroc": {
+      "diff": 0.012667052791900058,
+      "ci95": [
+        0.000119742779063789,
+        0.025571110221360018
+      ],
+      "share_of_resamples_above_0": 0.9755
+    }
+  }
+}
