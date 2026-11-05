@@ -220,6 +220,7 @@ splits/     dev_split.csv  test_split.csv  inner_split.csv
 src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
             panderm.py  check_institutions.py  isic2019.py  meta.py  test_eval.py
 docs/       test_protocol.md   (M13, fixed before the test set was opened)
+report/     main.tex  references.bib  make_figures.py  figures/   (the report; python report/make_figures.py rebuilds the figures)
 results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
             tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
                    one folder per experiment, each with a summary.md table
