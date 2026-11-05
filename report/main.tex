@@ -6,6 +6,434 @@
 %  Budget: 6--8 pages incl. figures, ~3,800 words (style guide, 3 Nov).
 %  Build:  cd report && latexmk -pdf main.tex
 % =============================================================================
+% Self-contained: the style file and the references are written out by
+% filecontents below, so main.tex compiles on its own (e.g. a new Overleaf
+% project with only this file). Figures: put the PDFs in figures/; a missing
+% figure is shown as a grey placeholder box instead of stopping the build.
+\begin{filecontents*}[overwrite]{arxiv.sty}
+\NeedsTeXFormat{LaTeX2e}
+
+\ProcessOptions\relax
+
+% fonts
+\renewcommand{\rmdefault}{ptm}
+\renewcommand{\sfdefault}{phv}
+
+% set page geometry
+\usepackage[verbose=true,letterpaper]{geometry}
+\AtBeginDocument{
+  \newgeometry{
+    textheight=9in,
+    textwidth=6.5in,
+    top=1in,
+    headheight=14pt,
+    headsep=25pt,
+    footskip=30pt
+  }
+}
+
+\widowpenalty=10000
+\clubpenalty=10000
+\flushbottom
+\sloppy
+
+
+
+\newcommand{\headeright}{A Preprint}
+\newcommand{\undertitle}{A Preprint}
+\newcommand{\shorttitle}{\@title}
+
+\usepackage{fancyhdr}
+\fancyhf{}
+\pagestyle{fancy}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyheadoffset{0pt}
+\rhead{\scshape \footnotesize \headeright}
+\chead{\shorttitle}
+\cfoot{\thepage}
+
+
+%Handling Keywords
+\def\keywordname{{\bfseries \emph{Keywords}}}%
+\def\keywords#1{\par\addvspace\medskipamount{\rightskip=0pt plus1cm
+\def\and{\ifhmode\unskip\nobreak\fi\ $\cdot$
+}\noindent\keywordname\enspace\ignorespaces#1\par}}
+
+% font sizes with reduced leading
+\renewcommand{\normalsize}{%
+  \@setfontsize\normalsize\@xpt\@xipt
+  \abovedisplayskip      7\p@ \@plus 2\p@ \@minus 5\p@
+  \abovedisplayshortskip \z@ \@plus 3\p@
+  \belowdisplayskip      \abovedisplayskip
+  \belowdisplayshortskip 4\p@ \@plus 3\p@ \@minus 3\p@
+}
+\normalsize
+\renewcommand{\small}{%
+  \@setfontsize\small\@ixpt\@xpt
+  \abovedisplayskip      6\p@ \@plus 1.5\p@ \@minus 4\p@
+  \abovedisplayshortskip \z@  \@plus 2\p@
+  \belowdisplayskip      \abovedisplayskip
+  \belowdisplayshortskip 3\p@ \@plus 2\p@   \@minus 2\p@
+}
+\renewcommand{\footnotesize}{\@setfontsize\footnotesize\@ixpt\@xpt}
+\renewcommand{\scriptsize}{\@setfontsize\scriptsize\@viipt\@viiipt}
+\renewcommand{\tiny}{\@setfontsize\tiny\@vipt\@viipt}
+\renewcommand{\large}{\@setfontsize\large\@xiipt{14}}
+\renewcommand{\Large}{\@setfontsize\Large\@xivpt{16}}
+\renewcommand{\LARGE}{\@setfontsize\LARGE\@xviipt{20}}
+\renewcommand{\huge}{\@setfontsize\huge\@xxpt{23}}
+\renewcommand{\Huge}{\@setfontsize\Huge\@xxvpt{28}}
+
+% sections with less space
+\providecommand{\section}{}
+\renewcommand{\section}{%
+  \@startsection{section}{1}{\z@}%
+                {-2.0ex \@plus -0.5ex \@minus -0.2ex}%
+                { 1.5ex \@plus  0.3ex \@minus  0.2ex}%
+                {\large\bf\raggedright}%
+}
+\providecommand{\subsection}{}
+\renewcommand{\subsection}{%
+  \@startsection{subsection}{2}{\z@}%
+                {-1.8ex \@plus -0.5ex \@minus -0.2ex}%
+                { 0.8ex \@plus  0.2ex}%
+                {\normalsize\bf\raggedright}%
+}
+\providecommand{\subsubsection}{}
+\renewcommand{\subsubsection}{%
+  \@startsection{subsubsection}{3}{\z@}%
+                {-1.5ex \@plus -0.5ex \@minus -0.2ex}%
+                { 0.5ex \@plus  0.2ex}%
+                {\normalsize\bf\raggedright}%
+}
+\providecommand{\paragraph}{}
+\renewcommand{\paragraph}{%
+  \@startsection{paragraph}{4}{\z@}%
+                {1.5ex \@plus 0.5ex \@minus 0.2ex}%
+                {-1em}%
+                {\normalsize\bf}%
+}
+\providecommand{\subparagraph}{}
+\renewcommand{\subparagraph}{%
+  \@startsection{subparagraph}{5}{\z@}%
+                {1.5ex \@plus 0.5ex \@minus 0.2ex}%
+                {-1em}%
+                {\normalsize\bf}%
+}
+\providecommand{\subsubsubsection}{}
+\renewcommand{\subsubsubsection}{%
+  \vskip5pt{\noindent\normalsize\rm\raggedright}%
+}
+
+% float placement
+\renewcommand{\topfraction      }{0.85}
+\renewcommand{\bottomfraction   }{0.4}
+\renewcommand{\textfraction     }{0.1}
+\renewcommand{\floatpagefraction}{0.7}
+
+\newlength{\@abovecaptionskip}\setlength{\@abovecaptionskip}{7\p@}
+\newlength{\@belowcaptionskip}\setlength{\@belowcaptionskip}{\z@}
+
+\setlength{\abovecaptionskip}{\@abovecaptionskip}
+\setlength{\belowcaptionskip}{\@belowcaptionskip}
+
+% swap above/belowcaptionskip lengths for tables
+\renewenvironment{table}
+  {\setlength{\abovecaptionskip}{\@belowcaptionskip}%
+   \setlength{\belowcaptionskip}{\@abovecaptionskip}%
+   \@float{table}}
+  {\end@float}
+
+% footnote formatting
+\setlength{\footnotesep }{6.65\p@}
+\setlength{\skip\footins}{9\p@ \@plus 4\p@ \@minus 2\p@}
+\renewcommand{\footnoterule}{\kern-3\p@ \hrule width 12pc \kern 2.6\p@}
+\setcounter{footnote}{0}
+
+% paragraph formatting
+\setlength{\parindent}{\z@}
+\setlength{\parskip  }{5.5\p@}
+
+% list formatting
+\setlength{\topsep       }{4\p@ \@plus 1\p@   \@minus 2\p@}
+\setlength{\partopsep    }{1\p@ \@plus 0.5\p@ \@minus 0.5\p@}
+\setlength{\itemsep      }{2\p@ \@plus 1\p@   \@minus 0.5\p@}
+\setlength{\parsep       }{2\p@ \@plus 1\p@   \@minus 0.5\p@}
+\setlength{\leftmargin   }{3pc}
+\setlength{\leftmargini  }{\leftmargin}
+\setlength{\leftmarginii }{2em}
+\setlength{\leftmarginiii}{1.5em}
+\setlength{\leftmarginiv }{1.0em}
+\setlength{\leftmarginv  }{0.5em}
+\def\@listi  {\leftmargin\leftmargini}
+\def\@listii {\leftmargin\leftmarginii
+              \labelwidth\leftmarginii
+              \advance\labelwidth-\labelsep
+              \topsep  2\p@ \@plus 1\p@    \@minus 0.5\p@
+              \parsep  1\p@ \@plus 0.5\p@ \@minus 0.5\p@
+              \itemsep \parsep}
+\def\@listiii{\leftmargin\leftmarginiii
+              \labelwidth\leftmarginiii
+              \advance\labelwidth-\labelsep
+              \topsep    1\p@ \@plus 0.5\p@ \@minus 0.5\p@
+              \parsep    \z@
+              \partopsep 0.5\p@ \@plus 0\p@ \@minus 0.5\p@
+              \itemsep \topsep}
+\def\@listiv {\leftmargin\leftmarginiv
+              \labelwidth\leftmarginiv
+              \advance\labelwidth-\labelsep}
+\def\@listv  {\leftmargin\leftmarginv
+              \labelwidth\leftmarginv
+              \advance\labelwidth-\labelsep}
+\def\@listvi {\leftmargin\leftmarginvi
+              \labelwidth\leftmarginvi
+              \advance\labelwidth-\labelsep}
+
+% create title
+\providecommand{\maketitle}{}
+\renewcommand{\maketitle}{%
+  \par
+  \begingroup
+    \renewcommand{\thefootnote}{\fnsymbol{footnote}}
+    % for perfect author name centering
+    %\renewcommand{\@makefnmark}{\hbox to \z@{$^{\@thefnmark}$\hss}}
+    % The footnote-mark was overlapping the footnote-text,
+    % added the following to fix this problem               (MK)
+    \long\def\@makefntext##1{%
+      \parindent 1em\noindent
+      \hbox to 1.8em{\hss $\m@th ^{\@thefnmark}$}##1
+    }
+    \thispagestyle{empty}
+    \@maketitle
+    \@thanks
+    %\@notice
+  \endgroup
+  \let\maketitle\relax
+  \let\thanks\relax
+}
+
+% rules for title box at top of first page
+\newcommand{\@toptitlebar}{
+  \hrule height 2\p@
+  \vskip 0.25in
+  \vskip -\parskip%
+}
+\newcommand{\@bottomtitlebar}{
+  \vskip 0.29in
+  \vskip -\parskip
+  \hrule height 2\p@
+  \vskip 0.09in%
+}
+
+% create title (includes both anonymized and non-anonymized versions)
+\providecommand{\@maketitle}{}
+\renewcommand{\@maketitle}{%
+  \vbox{%
+    \hsize\textwidth
+    \linewidth\hsize
+    \vskip 0.1in
+    \@toptitlebar
+    \centering
+    {\LARGE\sc \@title\par}
+    \@bottomtitlebar
+    \textsc{\undertitle}\\
+    \vskip 0.1in
+    \def\And{%
+      \end{tabular}\hfil\linebreak[0]\hfil%
+      \begin{tabular}[t]{c}\bf\rule{\z@}{24\p@}\ignorespaces%
+    }
+    \def\AND{%
+      \end{tabular}\hfil\linebreak[4]\hfil%
+      \begin{tabular}[t]{c}\bf\rule{\z@}{24\p@}\ignorespaces%
+    }
+    \begin{tabular}[t]{c}\bf\rule{\z@}{24\p@}\@author\end{tabular}%
+  \vskip 0.4in \@minus 0.1in \center{\@date}   \vskip 0.2in
+  }
+}
+
+% add conference notice to bottom of first page
+\newcommand{\ftype@noticebox}{8}
+\newcommand{\@notice}{%
+  % give a bit of extra room back to authors on first page
+  \enlargethispage{2\baselineskip}%
+  \@float{noticebox}[b]%
+    \footnotesize\@noticestring%
+  \end@float%
+}
+
+% abstract styling
+\renewenvironment{abstract}
+{
+  \centerline
+  {\large \bfseries \scshape Abstract}
+  \begin{quote}
+}
+{
+  \end{quote}
+}
+
+\endinput
+\end{filecontents*}
+\begin{filecontents*}[overwrite]{references.bib}
+% References for the report. Every entry is cited in main.tex.
+% Entries marked CHECK: verify volume/pages against the publisher page before hand-in.
+
+@article{rotemberg2021patient,
+  title   = {A patient-centric dataset of images and metadata for identifying melanomas using clinical context},
+  author  = {Rotemberg, Veronica and Kurtansky, Nicholas and Betz-Stablein, Brigid and Caffery, Liam and Chousakos, Emmanouil and Codella, Noel and others},
+  journal = {Scientific Data},
+  volume  = {8},
+  number  = {34},
+  year    = {2021}
+}
+
+@article{ha2020identifying,
+  title   = {Identifying Melanoma Images using {EfficientNet} Ensemble: Winning Solution to the {SIIM-ISIC} Melanoma Classification Challenge},
+  author  = {Ha, Qishen and Liu, Bo and Liu, Fuxu},
+  journal = {arXiv preprint arXiv:2010.05351},
+  year    = {2020}
+}
+
+@article{esteva2017dermatologist,
+  title   = {Dermatologist-level classification of skin cancer with deep neural networks},
+  author  = {Esteva, Andre and Kuprel, Brett and Novoa, Roberto A. and Ko, Justin and Swetter, Susan M. and Blau, Helen M. and Thrun, Sebastian},
+  journal = {Nature},
+  volume  = {542},
+  pages   = {115--118},
+  year    = {2017}
+}
+
+@inproceedings{he2016deep,
+  title     = {Deep Residual Learning for Image Recognition},
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2016}
+}
+
+@article{buda2018systematic,
+  title   = {A systematic study of the class imbalance problem in convolutional neural networks},
+  author  = {Buda, Mateusz and Maki, Atsuto and Mazurowski, Maciej A.},
+  journal = {Neural Networks},
+  volume  = {106},
+  pages   = {249--259},
+  year    = {2018}
+}
+
+@inproceedings{kang2020decoupling,
+  title     = {Decoupling Representation and Classifier for Long-Tailed Recognition},
+  author    = {Kang, Bingyi and Xie, Saining and Rohrbach, Marcus and Yan, Zhicheng and Gordo, Albert and Feng, Jiashi and Kalantidis, Yannis},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2020}
+}
+
+@inproceedings{lin2017focal,
+  title     = {Focal Loss for Dense Object Detection},
+  author    = {Lin, Tsung-Yi and Goyal, Priya and Girshick, Ross and He, Kaiming and Doll{\'a}r, Piotr},
+  booktitle = {Proceedings of the IEEE International Conference on Computer Vision (ICCV)},
+  year      = {2017}
+}
+
+@inproceedings{mukhoti2020calibrating,
+  title     = {Calibrating Deep Neural Networks using Focal Loss},
+  author    = {Mukhoti, Jishnu and Kulharia, Viveka and Sanyal, Amartya and Golodetz, Stuart and Torr, Philip H. S. and Dokania, Puneet K.},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {33},
+  year      = {2020}
+}
+
+@inproceedings{guo2017calibration,
+  title     = {On Calibration of Modern Neural Networks},
+  author    = {Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian Q.},
+  booktitle = {Proceedings of the 34th International Conference on Machine Learning (ICML)},
+  year      = {2017}
+}
+
+@inproceedings{yuan2021large,
+  title     = {Large-scale Robust Deep {AUC} Maximization: A New Surrogate Loss and Empirical Studies on Medical Image Classification},
+  author    = {Yuan, Zhuoning and Yan, Yan and Sonka, Milan and Yang, Tianbao},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year      = {2021}
+}
+
+@article{yan2025panderm,
+  title   = {A multimodal vision foundation model for clinical dermatology},
+  author  = {Yan, Siyuan and Yu, Zhen and Primiero, Clare and Vico-Alonso, Cristina and Wang, Zhonghua and Yang, Litao and Tschandl, Philipp and others and Ge, Zongyuan},
+  journal = {Nature Medicine},
+  year    = {2025},
+  doi     = {10.1038/s41591-025-03747-y},
+  note    = {arXiv:2410.15038}
+}
+
+@article{saito2015precision,
+  title   = {The Precision-Recall Plot Is More Informative than the {ROC} Plot When Evaluating Binary Classifiers on Imbalanced Datasets},
+  author  = {Saito, Takaya and Rehmsmeier, Marc},
+  journal = {PLoS ONE},
+  volume  = {10},
+  number  = {3},
+  pages   = {e0118432},
+  year    = {2015}
+}
+
+@article{tschandl2018ham10000,
+  title   = {The {HAM10000} dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions},
+  author  = {Tschandl, Philipp and Rosendahl, Cliff and Kittler, Harald},
+  journal = {Scientific Data},
+  volume  = {5},
+  number  = {180161},
+  year    = {2018}
+}
+
+@article{combalia2019bcn20000,
+  title   = {{BCN20000}: Dermoscopic Lesions in the Wild},
+  author  = {Combalia, Marc and Codella, Noel C. F. and Rotemberg, Veronica and Helba, Brian and Vilaplana, Veronica and Reiter, Ofer and others},
+  journal = {arXiv preprint arXiv:1908.02288},
+  year    = {2019}
+}
+
+@inproceedings{dosovitskiy2021image,
+  title     = {An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale},
+  author    = {Dosovitskiy, Alexey and Beyer, Lucas and Kolesnikov, Alexander and Weissenborn, Dirk and Zhai, Xiaohua and Unterthiner, Thomas and others},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021}
+}
+
+@inproceedings{tan2019efficientnet,
+  title     = {{EfficientNet}: Rethinking Model Scaling for Convolutional Neural Networks},
+  author    = {Tan, Mingxing and Le, Quoc},
+  booktitle = {Proceedings of the 36th International Conference on Machine Learning (ICML)},
+  year      = {2019}
+}
+
+@inproceedings{bao2022beit,
+  title     = {{BEiT}: {BERT} Pre-Training of Image Transformers},
+  author    = {Bao, Hangbo and Dong, Li and Piao, Songhao and Wei, Furu},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022}
+}
+
+@inproceedings{loshchilov2019decoupled,
+  title     = {Decoupled Weight Decay Regularization},
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019}
+}
+
+@inproceedings{kingma2015adam,
+  title     = {Adam: A Method for Stochastic Optimization},
+  author    = {Kingma, Diederik P. and Ba, Jimmy},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2015}
+}
+
+% CHECK: journal, year and volume; the paper reports that patient-contextual
+% images did not improve AI or reader performance in the 2020 challenge.
+@article{kurtansky2024patient,
+  title   = {Effect of patient-contextual skin images in human- and artificial intelligence-based diagnosis of melanoma: Results from the 2020 {SIIM-ISIC} melanoma classification challenge},
+  author  = {Kurtansky, Nicholas R. and others},
+  journal = {CHECK},
+  year    = {CHECK}
+}
+\end{filecontents*}
 \documentclass{article}
 \usepackage{arxiv}
 \usepackage[utf8]{inputenc}
@@ -20,6 +448,9 @@
 \usepackage{enumitem}
 \usepackage{caption}
 \captionsetup{font=small,labelfont=bf}
+% \fig{file}{width}: the figure, or a placeholder box if the file is missing
+\newcommand{\fig}[2]{\IfFileExists{#1}{\includegraphics[width=#2]{#1}}%
+  {\fbox{\parbox[c][4cm][c]{\dimexpr#2-2\fboxsep}{\centering\small missing: \texttt{\detokenize{#1}}}}}}
 
 % ---- scaffold helpers (delete with the last grey box) -----------------------
 \definecolor{notebg}{HTML}{F2F1EE}
@@ -197,7 +628,7 @@ AUC-margin loss (E6)    & \textbf{0.169} $\pm$ 0.048 & \textbf{0.882} $\pm$ 0.02
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{figures/fig1_tradeoff_reliability.pdf}
+\fig{figures/fig1_tradeoff_reliability.pdf}{\linewidth}
 \caption{Plain BCE and three treatments, full fine-tuning, 5 held-out folds. (a) False alarms per fold needed to find a given share of melanomas: the four curves coincide, so no treatment separates better; the dots show where threshold 0.5 lands, which is all the treatments change. (b) Reliability diagrams: on the dashed line a score equals the observed share of melanomas. Only plain BCE stays on it.}
 \label{fig:tradeoff}
 \end{figure}
@@ -220,14 +651,14 @@ AUC-margin loss (E6)    & \textbf{0.169} $\pm$ 0.048 & \textbf{0.882} $\pm$ 0.02
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{figures/fig2_steps.pdf}
+\fig{figures/fig2_steps.pdf}{\linewidth}
 \caption{AUPRC on the held-out folds for every treatment and extension step (dots: the 5 folds; bar: mean; dashed line: plain BCE). Blue steps pass the rule (mean above plain BCE and better on at least 4 of 5 folds); right: mean and number of folds better than plain BCE. Grey lines separate treatments, ImageNet changes and skin-specific changes.}
 \label{fig:steps}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{figures/fig3_long_training.pdf}
+\fig{figures/fig3_long_training.pdf}{\linewidth}
 \caption{PanDerm fine-tuned + ISIC 2019 with the authors' 50-epoch schedule, fold 0 (stopped by Colab after 29 epochs). (a) The training AUROC reaches 1.000 while inner validation and held-out AUROC fall: the network overfits. (b) The epoch selected on inner validation (dotted) gives a held-out AUPRC below that of our 8-epoch run (dashed). The held-out fold was recorded only, never used for selection.}
 \label{fig:long}
 \end{figure}
@@ -260,7 +691,7 @@ PanDerm FT + ISIC 2019 & \textbf{0.291} [0.197, 0.394] & \textbf{+0.138} [+0.059
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.55\linewidth]{figures/fig4_test_pr.pdf}
+\fig{figures/fig4_test_pr.pdf}{0.55\linewidth}
 \caption{Precision--recall curves on the locked test set. Dots: the pre-registered threshold (aimed at 80\% recall). The extension model is above both ResNet-18 models at every recall; the dashed line is the 1.8\% chance level.}
 \label{fig:test}
 \end{figure}
