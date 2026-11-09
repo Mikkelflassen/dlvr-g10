@@ -5,6 +5,7 @@ number in the report can be traced back to a run folder. Writes
 report/figures/*.pdf and report/numbers.tex (LaTeX macros with the numbers the
 text uses).
 """
+# AI declaration: the plotting code in this file was written with Claude.
 from pathlib import Path
 import json
 import sys
@@ -24,8 +25,8 @@ OUT = REPO / "report" / "figures"
 OUT.mkdir(parents=True, exist_ok=True)
 RUNS, M12, TEST = REPO / "results" / "runs", REPO / "results" / "m12", REPO / "results" / "test"
 
-# Colours: categorical slots 1-4 of the validated reference palette (dataviz skill),
-# in fixed order; line style is the second encoding so print/greyscale still works.
+# Colours: a fixed order of four colours, chosen with Claude. Line style is the second encoding,
+# so print/greyscale still works.
 C = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 STYLE = ["-", "--", "-.", ":"]
@@ -72,6 +73,7 @@ def fig_tradeoff_reliability():
     a.set_xlim(0, 100)
     a.set_ylim(0, None)
 
+    # Reliability diagram: Guo et al. (2017), https://arxiv.org/abs/1706.04599
     bins = np.linspace(0, 1, 11)
     b.plot([0, 1], [0, 1], color=MUTED, lw=0.8, ls="--")
     for i, (arm, label) in enumerate(ARMS):

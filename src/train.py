@@ -12,6 +12,7 @@ The workflow around it (fixed seed, one change at a time, evaluate on the whole
 validation set) follows A. Karpathy, "A Recipe for Training Neural Networks":
   https://karpathy.github.io/2019/04/25/recipe/
 """
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 import json
 import os
 import random
@@ -56,6 +57,8 @@ def _forward(model, inputs, device):
     return model(inputs.to(device, non_blocking=True))
 
 
+# Course: the same evaluation pattern (model.eval, torch.no_grad, summing the loss per image)
+# is in [C]/labs/Lab2_TransferLearning.ipynb.
 def val_epoch(model, loader, criterion, device, amp=False):
     """Adapted from [H] `val_epoch`: loss and probabilities over the whole loader.
 
@@ -94,6 +97,9 @@ def predict(model, loader, device, amp=False):
     return torch.cat(PROBS).numpy()
 
 
+# AI declaration: this function was written with Claude, using LibAUC and the paper named below.
+# The two stages (train first, then reset the last layer and use AUCMLoss + PESG) follow LibAUC's tutorial:
+# https://github.com/Optimization-AI/LibAUC/blob/main/examples/02_v140_Optimizing_AUROC_with_ResNet20_on_Imbalanced_CIFAR10.ipynb
 def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader, train_check,
               device, history, since):
     """Arm E6, stage 2: fine-tune the stage-1 (plain BCE) network with the AUC-margin loss.
@@ -120,6 +126,7 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
     optimizer = PESG(model.parameters(), loss_fn=aucm, lr=cfg["auc_lr"], margin=cfg["margin"],
                      epoch_decay=cfg["epoch_decay"], weight_decay=cfg["auc_weight_decay"],
                      verbose=False)
+    # Course: keeping the best weights like this is in [C]/lecture_notes/lecture6_notes.md, Code 5.
     best_auc, best_state = -1.0, None
     for epoch in range(cfg["auc_epochs"]):
         if epoch == cfg["auc_epochs"] // 2:
@@ -158,6 +165,8 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
     return best_auc
 
 
+# AI declaration: the setup code in this function (settings, checks, data handling) was written with Claude.
+# Parts taken from other people's work name their source below.
 def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoch_hook=None):
     """cfg keys: arm, depth, fold, seed, epochs, batch_size,
                  pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
@@ -308,6 +317,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
                            device, cfg.get("alpha", -1))
     # Only parameters that require gradients are optimised, as in [T].
+    # Course: Adam and AdamW are in [C]/lecture_notes/lecture6_notes.md, Code 1.
     # Adam: Kingma & Ba (2015), https://arxiv.org/abs/1412.6980
     params = [p for p in model.parameters() if p.requires_grad]
     lr_schedule = None
@@ -321,6 +331,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
                                 cfg["warmup_epochs"])
     else:
         optimizer = torch.optim.Adam(params, lr=cfg["lr"])
+    # The autocast + GradScaler steps follow "Typical Mixed Precision Training" in the PyTorch docs:
+    # https://docs.pytorch.org/docs/stable/notes/amp_examples.html
     # Mixed precision: https://docs.pytorch.org/docs/stable/amp.html
     # With enabled=False the scaler does nothing and the step is the plain one.
     scaler = torch.amp.GradScaler("cuda", enabled=cfg["amp"])
@@ -329,11 +341,16 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     history = []
     since = time.time()
 
+    # Course: the five training steps (zero_grad, forward, loss, backward, step) are in
+    # [C]/lecture_notes/lecture2_notes.md, Code 1, and [C]/labs/Lab2_TransferLearning.ipynb.
+    # Saving the best epoch is in [C]/lecture_notes/lecture6_notes.md, Code 7.
     # Training loop adapted from [T] `train_model`: a temporary checkpoint holds the
     # best epoch and is reloaded at the end. The best epoch is chosen by validation
     # AUROC as in [H] (`if auc > auc_max: torch.save(...)`), not by accuracy as in [T]
     # — and not by loss, which is not comparable across arms.
     #
+    # AI declaration: the resume code was written with Claude.
+    # Course: saving the model and optimizer to Google Drive is in [C]/labs/Lab6_IterativeWorkflow.ipynb (save_checkpoint).
     # resume_dir (long runs only): after every epoch the full training state is saved
     # there (e.g. on Google Drive), so a run cut off by a Colab disconnect continues
     # from its last finished epoch instead of starting over. The order of the images
@@ -382,6 +399,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
             for inputs, labels in train_loader:
                 labels = labels.to(device, non_blocking=True)
 
+                # From PanDerm's classification/furnace/engine_for_finetuning.py: lr = schedule value * lr_scale of the group.
                 if lr_schedule is not None:
                     for group in optimizer.param_groups:
                         group["lr"] = lr_schedule[step] * group["lr_scale"]

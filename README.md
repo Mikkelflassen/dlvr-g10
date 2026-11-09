@@ -245,7 +245,8 @@ person), applies the Phase 3 decision rules and draws the report figures into
 ## Sources
 
 The code is built from library calls and from published code that we adapted.
-Each function names its source in a comment; this is the full list.
+Code taken from other people names its source in a comment; this is the full list.
+Comments starting with `# AI declaration:` mark the more complex parts written with Claude.
 
 **Code we adapted**
 
@@ -255,6 +256,17 @@ Each function names its source in a comment; this is the full list.
 | `ISICDataset`, `set_seed`, `val_epoch` / `predict`, fold handling, best epoch by AUROC, augmentation steps `geo`–`cutout` (operations and strengths) | Ha, Liu & Liu (2020), [ISIC 2020 1st-place solution](https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution), [paper](https://arxiv.org/abs/2010.05351) | MIT |
 | `ece` in `eval.py` | G. Pleiss, [temperature_scaling](https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py), code for Guo et al. (2017) | MIT |
 | Balanced sampler weights in `data.py` | ptrblck, PyTorch forum, [How to handle imbalanced classes](https://discuss.pytorch.org/t/how-to-handle-imbalanced-classes/11264) | forum post |
+| Metadata features and network in `meta.py`; reading ISIC 2019 in `isic2019.py` | Ha, Liu & Liu (2020), same repository (`get_meta_data`, `Effnet_Melanoma`, `get_df`) | MIT |
+| Model definition, weight loading, layer-wise learning rates and cosine schedule in `panderm.py` | Yan et al. (2025), [PanDerm](https://github.com/SiyuanYan1/PanDerm); parts build on [BEiT](https://github.com/microsoft/unilm/tree/master/beit) | CC-BY-NC-ND 4.0 (PanDerm), MIT (BEiT) |
+| `auc_stage` in `train.py` | [LibAUC tutorial](https://github.com/Optimization-AI/LibAUC/blob/main/examples/02_v140_Optimizing_AUROC_with_ResNet20_on_Imbalanced_CIFAR10.ipynb) | MIT |
+
+**Course material**
+
+Code that follows patterns from the course has a `# Course:` comment naming the lecture or lab in
+[Deep Learning for Visual Recognition 2026](https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
+the training loop (lecture 2, Lab 2), BCE loss (lectures 2 and 3), ResNet-18 transfer learning (lectures 4 and 7),
+Dataset pattern and duplicate check (Lab 3), metrics (bonus lecture, week 4), optimisers, schedules, augmentation and
+best-epoch saving (lecture 6), focal loss (lecture 8), checkpoints (Lab 6).
 
 **Libraries called directly**
 
@@ -266,6 +278,9 @@ Each function names its source in a comment; this is the full list.
 | Inner validation split | [`sklearn.model_selection.StratifiedGroupKFold`](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html) |
 | Threshold tuning | [`sklearn.metrics.precision_recall_curve`](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_curve.html) |
 | AUROC, AUPRC, recall, precision, F1 | [`sklearn.metrics`](https://scikit-learn.org/stable/modules/model_evaluation.html) |
+| AUC-margin loss (E6) | [LibAUC](https://libauc.org) `AUCMLoss`, `PESG` |
+| Duplicate check | [imagehash](https://github.com/JohannesBuchner/imagehash) `phash` |
+| Mixed precision | [`torch.autocast`, `torch.amp.GradScaler`](https://docs.pytorch.org/docs/stable/notes/amp_examples.html) |
 | Image download | [Kaggle API](https://www.kaggle.com/docs/api) |
 
 **Methods and workflow**
@@ -273,6 +288,9 @@ Each function names its source in a comment; this is the full list.
 - RandAugment: Cubuk et al. (2020), [arXiv:1909.13719](https://arxiv.org/abs/1909.13719); [`torchvision.transforms.RandAugment`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.RandAugment.html).
 - Cutout: DeVries & Taylor (2017), [arXiv:1708.04552](https://arxiv.org/abs/1708.04552).
 - Focal loss: Lin et al. (2017), [arXiv:1708.02002](https://arxiv.org/abs/1708.02002). Focal loss and calibration: Mukhoti et al. (2020), [arXiv:2002.09437](https://arxiv.org/abs/2002.09437).
+- Deep AUC maximisation: Yuan et al. (2021), [arXiv:2012.03173](https://arxiv.org/abs/2012.03173). PanDerm: Yan et al. (2025), [arXiv:2410.15038](https://arxiv.org/abs/2410.15038).
+- Tricks act on the classifier, progressive sampling: Kang et al. (2020), [arXiv:1910.09217](https://arxiv.org/abs/1910.09217).
+- Patient-level bootstrap: Efron & Tibshirani (1993), An Introduction to the Bootstrap; Field & Welsh (2007), [doi:10.1111/j.1467-9868.2007.00593.x](https://doi.org/10.1111/j.1467-9868.2007.00593.x).
 - Expected calibration error: Guo et al. (2017), [arXiv:1706.04599](https://arxiv.org/abs/1706.04599).
 - ResNet: He et al. (2016), [arXiv:1512.03385](https://arxiv.org/abs/1512.03385). Adam: Kingma & Ba (2015), [arXiv:1412.6980](https://arxiv.org/abs/1412.6980).
 - Dataset: Rotemberg et al. (2021), [doi:10.1038/s41597-021-00815-z](https://doi.org/10.1038/s41597-021-00815-z); 256×256 version by C. Deotte, [jpeg-melanoma-256x256](https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-256x256).

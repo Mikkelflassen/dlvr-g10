@@ -53,6 +53,7 @@ def evaluate(repo, out_dir=None, seed=0):
     for name in probs:
         rows[name]["auprc_without_qld_sydney"] = average_precision_score(y[~aus], probs[name][~aus])
 
+    # AI declaration: the bootstrap below was written with Claude, following the references at the top.
     # patient bootstrap
     rng = np.random.default_rng(seed)
     patients = test.patient_id.values

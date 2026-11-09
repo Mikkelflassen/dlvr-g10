@@ -23,6 +23,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+# AI declaration: mapping the ISIC 2019 body sites to the ISIC 2020 names was written with Claude.
 SITES = ["head/neck", "upper extremity", "lower extremity", "torso", "palms/soles", "oral/genital"]
 SITE_MAP = {"anterior torso": "torso", "posterior torso": "torso", "lateral torso": "torso"}
 META_COLS = (["meta_sex", "meta_age"] + [f"meta_site_{i}" for i in range(len(SITES))]

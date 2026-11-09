@@ -3,6 +3,7 @@
 Metrics are scikit-learn functions:
   https://scikit-learn.org/stable/modules/model_evaluation.html
 """
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 import json
 from pathlib import Path
 
@@ -40,6 +41,7 @@ def ece(y, p, n_bins=15):
     return float(ece)
 
 
+# Course: the F1 formula and the precision-recall trade-off are in [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, sections 5 and 7.
 def best_threshold(y, p):
     """The threshold with the highest F1. Tuned on inner_val ONLY — tuning it on
     the held fold would break the comparison.
@@ -55,6 +57,7 @@ def best_threshold(y, p):
     return float(thresholds[int(np.argmax(f1))])
 
 
+# AI declaration: this function was written with Claude.
 def false_alarms_to_find(y, p, share):
     """Lower the threshold until `share` of the malignant images are called
     malignant, and count the benign images called malignant at that point.
@@ -66,6 +69,8 @@ def false_alarms_to_find(y, p, share):
     return int(((p >= t) & (y == 0)).sum())
 
 
+# Course: confusion_matrix is used in [C]/labs/Lab2_TransferLearning.ipynb; precision and recall are in
+# [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, section 4.
 def counts(y, yhat):
     """The four outcome counts and the percentages read off them.
 
@@ -90,6 +95,7 @@ def counts(y, yhat):
     }
 
 
+# Course: precision-recall curves and AP (we call it AUPRC) are in [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, sections 6 and 7.
 def score_run(run_dir, threshold=0.5):
     """One run -> one row of metrics on the held-out fold.
 
@@ -159,6 +165,7 @@ def e0b(runs_dir, depth, fold, seed=0):
 
 
 
+# AI declaration: this function was written with Claude.
 def tuning_summary(folder, out_name="summary.md"):
     """One small table per tuning folder, written to <folder>/summary.md.
 
@@ -289,6 +296,7 @@ def depth_choice(results, arm):
             "gap": gap, "spread": spread, "winner": winner}
 
 
+# Kang et al. (2020): https://arxiv.org/abs/1910.09217
 def trick_gap_by_depth(results, arm):
     """Kang et al. (2020) test: gap = AUPRC(trick) - AUPRC(E0), per fold, at each
     depth. If imbalance tricks mainly act on the last layer, the gap should be

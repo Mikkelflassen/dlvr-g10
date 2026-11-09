@@ -44,6 +44,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
+# PanDerm's code and weights are released under CC-BY-NC-ND 4.0 (see their README).
 from data import inner_split
 
 # PanDerm's eval transform (builder.get_eval_transforms). Note std 0.228, as in their code.
@@ -56,6 +58,8 @@ TRANSFORM = transforms.Compose([
 C_GRID = [1e-4, 1e-3, 1e-2, 1e-1, 1.0]
 
 
+# Loading a .py file as a module follows the Python docs, "Importing a source file directly":
+# https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
 def _modeling(panderm_repo):
     """PanDerm's model definitions, loaded once from the cloned repo."""
     if "panderm_modeling" in sys.modules:
@@ -68,6 +72,7 @@ def _modeling(panderm_repo):
     return mod
 
 
+# AI declaration: the key clean-up and the check for missing weights were written with Claude.
 def _load_weights(model, checkpoint):
     """Copy the pretrained weights into `model` by name.
 
@@ -94,6 +99,7 @@ def load_panderm(panderm_repo, checkpoint, device):
     """PanDerm_Base with its pretrained weights, CLS-token features, eval mode (frozen use)."""
     model = _modeling(panderm_repo).panderm_base_patch16_224()
     _load_weights(model, checkpoint)
+    # Course: replacing the last layer with nn.Identity to get features is in [C]/labs/Lab3_DataLoading.ipynb.
     model.head = torch.nn.Identity()
     return model.eval().to(device)
 
@@ -121,6 +127,7 @@ def build_finetune(panderm_repo, checkpoint, drop_path=0.2):
     return model
 
 
+# PanDerm's file builds on BEiT (Bao et al. 2022, MIT licence): https://github.com/microsoft/unilm/tree/master/beit
 def _layer_id(name, n_layers):
     """Adapted from get_num_layer_for_vit (PanDerm classification/furnace/optim_factory.py):
     embeddings are layer 0, block i is layer i+1, everything after the blocks is the top."""
@@ -131,6 +138,7 @@ def _layer_id(name, n_layers):
     return n_layers + 1
 
 
+# Course: lower learning rates for earlier layers are in [C]/lecture_notes/lecture7_notes.md, Code 1.
 def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
     """Parameter groups with a learning-rate scale per layer, adapted from
     get_parameter_groups + LayerDecayValueAssigner (same file): the head learns at
@@ -153,6 +161,8 @@ def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
     return list(groups.values())
 
 
+# Course: linear warm-up + cosine decay is in [C]/lecture_notes/lecture6_notes.md, Code 2.
+# PanDerm's function comes from BEiT (see above).
 def cosine_lr(base, final, epochs, steps_per_epoch, warmup_epochs=1):
     """Learning rate per step: linear warm-up from 0, then cosine down to `final`.
     Adapted from cosine_scheduler (PanDerm classification/furnace/utils.py)."""
@@ -187,6 +197,8 @@ def extract(model, df, device, batch_size=128, workers=2):
     return torch.cat(feats).numpy()
 
 
+# AI declaration: this function was written with Claude.
+# Course: training only a new classifier on a frozen network is in [C]/lecture_notes/lecture4_notes.md, Code 13.
 def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=None):
     """Train the linear probe for one held-out fold and write the run folder.
 

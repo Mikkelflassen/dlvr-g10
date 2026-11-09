@@ -1,4 +1,5 @@
 """The four arms differ only here (E2 differs in the sampler instead)."""
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 from functools import partial
 
 import torch
@@ -22,6 +23,7 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
             raise ValueError("E1 needs pos_weight")
         w = torch.tensor([pos_weight], dtype=torch.float32, device=device)
         return nn.BCEWithLogitsLoss(pos_weight=w)
+    # Course: focal loss is explained in [C]/lecture_notes/lecture8_notes.md, Code 5. Here we call the torchvision version.
     if arm in ("E3", "E5"):
         # Library: torchvision.ops.sigmoid_focal_loss — focal loss of Lin et al. (2017).
         #   https://arxiv.org/abs/1708.02002
@@ -31,4 +33,5 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
         # focusing alone and does not overlap with E1's class weighting.
         # Calibration motivation: Mukhoti et al. (2020), https://arxiv.org/abs/2002.09437
         return partial(sigmoid_focal_loss, alpha=alpha, gamma=gamma, reduction="mean")
+    # Course: BCEWithLogitsLoss is in [C]/lecture_notes/lecture2_notes.md, Code 5, and [C]/lecture_notes/lecture3_notes.md, Code 4.
     return nn.BCEWithLogitsLoss()

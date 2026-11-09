@@ -34,6 +34,7 @@ check errs on the loose side. The full distance histogram is saved for the repor
   https://github.com/JohannesBuchner/imagehash
   https://challenge2020.isic-archive.com/  (duplicate list under "Data")
 """
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 from pathlib import Path
 from multiprocessing import Pool
 import json
@@ -68,6 +69,7 @@ def phash_all(paths, workers=2):
         return np.array(pool.map(_phash, list(paths), chunksize=256), dtype=np.uint64)
 
 
+# AI declaration: the fast Hamming distance code (_POP, _hamming, nearest) was written with Claude.
 def _hamming(a, b):
     """Bits that differ between every hash in a (n) and every hash in b (m) -> n x m."""
     x = np.bitwise_xor(a[:, None], b[None, :])
@@ -88,6 +90,9 @@ def nearest(a, b, same_set=False, chunk=400):
     return dist, idx
 
 
+# AI declaration: this function was written with Claude.
+# Course: the idea of checking train and validation for duplicates is in [C]/labs/Lab3_DataLoading.ipynb
+# (find_train_val_duplicates). That lab compares ResNet features; we compare pHash values instead.
 def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
     """Run once. Writes splits/isic2019_train.csv (the ISIC 2019 images allowed in
     training), splits/isic2019_duplicates.csv (the ones removed, with their ISIC 2020

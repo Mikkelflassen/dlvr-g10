@@ -4,6 +4,7 @@ Data: ISIC 2020 (Rotemberg et al., 2021, https://doi.org/10.1038/s41597-021-0081
 in Chris Deotte's 256x256 JPEG version,
 https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-256x256
 """
+# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
 from PIL import Image
 
+# Course: the same values and names are in [C]/labs/Lab2_TransferLearning.ipynb.
 # ImageNet statistics, as in the PyTorch transfer learning tutorial (see make_transform).
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -28,6 +30,7 @@ def load_splits(splits_dir, data_root):
     return out
 
 
+# Course: why we need separate train, validation and test sets: [C]/lecture_notes/lecture2_notes.md, section 3.
 def inner_split(dev, test_fold, splits_dir):
     """Training folds -> (train, inner_val), read from splits/inner_split.csv.
 
@@ -58,6 +61,8 @@ def _transpose(img):
     return img.transpose(Image.TRANSPOSE)
 
 
+# AI declaration: turning Ha et al.'s albumentations list into torchvision code was done with Claude.
+# Course: random crop, flip and colour jitter are in [C]/lecture_notes/lecture6_notes.md, Code 3 (Cutout is explained there too).
 def make_transform(train, augment=False, aug="base", size=256):
     """EDIT THE TRAINING AUGMENTATION HERE — this is the only place it lives.
 
@@ -154,6 +159,8 @@ def make_transform(train, augment=False, aug="base", size=256):
                               + [transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
 
+# Course: the same Dataset pattern (__len__, __getitem__, Image.open(...).convert('RGB')) is in
+# [C]/labs/Lab3_DataLoading.ipynb (ImageDatasetFromCSV).
 class ISICDataset(Dataset):
     """Adapted from `MelanomaDataset` in the ISIC 2020 winning solution (Ha et al., MIT):
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
