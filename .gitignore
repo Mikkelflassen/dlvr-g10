@@ -1,10 +1,10 @@
-# model checkpoints — answers live in preds.csv
+# we do not keep the trained models, the predictions are in preds.csv
 *.pt
 
-# python / notebook junk
+# python and notebook files we do not need
 __pycache__/
 .ipynb_checkpoints/
 
-# local data, never committed
+# the images stay outside the repo
 isic/
 *.zip

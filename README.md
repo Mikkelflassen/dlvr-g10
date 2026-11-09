@@ -1,246 +1,172 @@
-# dlvr-g10
+# Group 10: Finding melanomas in skin images
 
-Group 10, Deep Learning for Visual Recognition, Aarhus University, autumn 2026.
+This is our course project in Deep Learning for Visual Recognition at Aarhus University, autumn 2026.
 
-Benign vs malignant skin-lesion classification on ISIC 2020, comparing four
-treatments for a ~56:1 class imbalance at two fine-tuning depths.
+## What we did
 
-| Arm | Treatment |
-|-----|-----------|
-| E0  | Plain BCE (baseline) |
-| E0b | E0 re-thresholded — no training, the control |
-| E1  | BCE with `pos_weight` |
-| E2  | Balanced sampling (`WeightedRandomSampler`) |
-| E3  | Focal loss |
+We train a network to tell benign and malignant skin lesions apart, using the ISIC 2020 images.
+Only about 1.8% of the images are malignant, so the two classes are very unbalanced.
 
-E0b is post-hoc: it reuses E0's saved `preds.csv` and moves the decision
-threshold, so it has no entry in `arms.json` and never trains.
+Our main question was this: do the usual tricks for unbalanced data help the network separate the
+two classes better, or do they only move the decision threshold?
 
-Every trained arm (E0–E3) is scored at threshold 0.5. E0b is E0 scored at the
-threshold with the best F1 on inner validation. So E0 and E0b share AUROC,
-AUPRC and ECE and differ only in recall, precision and F1 — E0b shows how much
-of an arm's gain a threshold move alone would give. `eval.build_results` adds
-the E0b rows automatically.
+The project has three parts:
 
-## Rules
+1. **The grid.** We compared plain BCE with three tricks (weighted loss, balanced sampling and focal
+   loss). We used ResNet-18, both frozen and fully fine-tuned, on 5 folds. That is 40 runs.
+   Afterwards we added two more setups, E5 and E6.
+2. **The extension.** The tricks did not help much, so we tried to make the network itself better.
+   We changed one thing at a time. In the code this part is called M12.
+3. **The test set.** At the end we opened our locked test set once, for three models.
+   In the code this part is called M13.
 
-1. **`splits/dev_split.csv`, `splits/test_split.csv` and `splits/inner_split.csv`
-   are canonical.** Never regenerate them. `inner_split.csv` (frozen 17 Oct 2026)
-   fixes the inner validation images per held-out fold, independent of the seed
-   and the scikit-learn version; it reproduces every earlier seed-0 run exactly. If a split assertion fails, the answer is to use the saved
-   CSVs, not to rebuild them.
-2. **All training goes through `notebooks/G10_run.ipynb`.** No training loop in
-   any other notebook — a second copy is a second explanation for any gap
-   between arms.
-3. **All metrics come from `eval.py`**, computed from saved `preds.csv`.
-4. **`test_split.csv` stays closed until December.** Model selection,
-   thresholds and arm settings use the inner validation split only.
+## What we found
 
-## Setup
+Our main score is AUPRC, the area under the precision-recall curve. Random guessing gives about 0.018.
 
-Three Colab Secrets, each with *Notebook access* switched on:
+The numbers below are the mean over the 5 held-out folds, with full fine-tuning unless we say otherwise.
+We decided on a rule before we looked at the results: a change only helps if its mean AUPRC is above
+the base and it is better on at least 4 of the 5 folds.
 
-| Secret | Used for |
-|--------|----------|
-| `KAGGLE_USERNAME` | downloading the images |
-| `KAGGLE_KEY` | downloading the images |
-| `GH_TOKEN` | pushing results back to this repo |
+| Setup | Mean AUPRC | Folds better than the base | Helps? |
+|---|---|---|---|
+| E0: plain BCE (the base) | 0.159 | | |
+| E1: weighted loss | 0.149 | 2 of 5 | no |
+| E2: balanced sampling | 0.158 | 3 of 5 | no |
+| E3: focal loss | 0.165 | 2 of 5 | no |
+| E5: balanced sampling + focal loss | 0.149 | 2 of 5 | no |
+| E6: BCE, then AUC-margin loss | 0.169 | 4 of 5 | yes, a little |
+| 384 px images | 0.163 | 3 of 5 | no |
+| EfficientNet-B0 | 0.169 | 2 of 5 | no |
+| ResNet-18 with ISIC 2019 images added to training | 0.206 | 4 of 5 | yes |
+| PanDerm, frozen | 0.184 | 4 of 5 | yes |
+| PanDerm, frozen, + ISIC 2019 | 0.176 | 3 of 5 | no |
+| PanDerm, fine-tuned | 0.264 | 5 of 5 | yes |
+| PanDerm, fine-tuned, + ISIC 2019 | 0.322 | 5 of 5 | yes, our best model |
+| PanDerm, fine-tuned, + ISIC 2019 + age, sex and body site | 0.317 | 5 of 5 | yes |
 
-`GH_TOKEN` is a GitHub fine-grained personal access token scoped to this
-repository with **Contents: Read and write**. Each person makes their own.
+So the three tricks mostly moved the threshold. The big gains came from real extra melanomas
+(ISIC 2019) and from a network pretrained on skin images (PanDerm). We also tried longer training
+for the best model on fold 0. Colab stopped after 29 of the planned 50 epochs, and it did not help.
 
-## Data
+On the locked test set (4,630 images, 82 melanomas) we got the numbers below. We fixed each model's
+threshold before we opened the test set, at the score that finds 80% of the melanomas in its held-out predictions.
 
-Images are not in this repo. Each session pulls them from Kaggle:
+| Model | AUPRC (95% interval) | AUROC (95% interval) | Melanomas found | False alarms |
+|---|---|---|---|---|
+| PanDerm, fine-tuned, + ISIC 2019 | 0.291 (0.197 to 0.394) | 0.936 (0.914 to 0.954) | 71 of 82 | 561 |
+| E6: BCE, then AUC-margin loss | 0.187 (0.113 to 0.289) | 0.883 (0.845 to 0.915) | 61 of 82 | 958 |
+| E0: plain BCE | 0.154 (0.092 to 0.237) | 0.870 (0.829 to 0.905) | 62 of 82 | 1,002 |
 
-```python
-!kaggle datasets download -d cdeotte/jpeg-melanoma-256x256 -p /content -q
-!unzip -q /content/jpeg-melanoma-256x256.zip -d /content/isic
-```
+PanDerm may have been pretrained on some of the same patients as ISIC 2020. So we also scored the
+models without the Queensland and Sydney images. The order stayed the same (AUPRC 0.320, 0.231 and 0.171).
 
-792 MB, 256×256 JPEGs, centre-cropped then resized by the dataset author.
-Not the ~108 GB competition archive. 33,126 images on disk; 32,693 survive
-deduplication into the splits (28,063 dev / 4,630 test, 581 malignant).
+The full details are in `results/test/summary.md`.
 
-The notebook does this for you and skips it if the data is already unpacked.
+## How we worked
 
-Two metadata traps: `width` and `height` are the *original* dimensions before
-resize, never the actual 256×256 — don't use them for resizing. And
-`benign_malignant` is the target in text form, so it and `diagnosis` must be
-dropped explicitly.
+- **Patients stay together.** All images from one patient are in the same split.
+- **Splits.** 86% of the images are for development, in 5 folds. 14% are the locked test set.
+  We use 20% of the training folds as inner validation. The split files are in `splits/` and we never
+  made them again.
+- **Choices.** Inside a run we only used inner validation, for example to choose the best epoch and
+  the settings. We used the held-out folds to compare the setups, and the test set only once at the end.
+- **One change at a time**, so we know what caused a difference.
+- **Rules first.** We wrote our decision rules before we ran the experiments. For the test set we
+  wrote `results/test/protocol.md` before we opened it.
+- **Metrics from saved files.** Every run saves its predictions in `preds.csv`, and all metrics are
+  calculated from those files.
 
-## One run
+## How we used GitHub and Colab
 
-1. Open `notebooks/G10_run.ipynb` in Colab (colab.research.google.com →
-   GitHub tab → paste this repo's URL).
-2. Runtime → Change runtime type → **T4 GPU**.
-3. Edit cell 4 — `ARM`, `FOLD`, `SEED`, `TAG`, `FOLDER`, `AUG` — and nothing
-   else. For a real grid run leave `TAG`, `FOLDER` and `AUG` empty. For a test
-   run set `TAG` (e.g. `"pw15"`) and `FOLDER`, the experiment it belongs to
-   (e.g. `"e1_pos_weight"`); it is saved in `results/tuning/<FOLDER>/` and the
-   folder's `summary.md` table is rebuilt and pushed with it.
-4. Run the cells top to bottom. The last cell commits and pushes the results.
+We kept all our code in one GitHub repository and trained the networks in Google Colab, because Colab gives
+us a GPU.
 
-`ARM` is a key from `configs/arms.json`: `E0`/`E1`/`E2`/`E3` × `frozen`/`full`.
+Each notebook first got the newest code from GitHub. When a run was finished, the notebook pushed the results
+back to the repository. This gave us three things:
 
-Each run writes `results/runs/<arm>_<depth>_f<fold>_s<seed>/` containing
-`config.json` (settings + git hash), `history.csv` (per-epoch loss and AUROC)
-and `preds.csv` (per-image probabilities). Every reported metric is derived
-from `preds.csv`, so the analysis can change in November without retraining.
+- **Nothing was lost.** Colab sessions often stop, but finished runs were already saved. Long runs also
+  pushed their progress after every epoch.
+- **Every run is logged.** Each run folder has the settings that were used and what came out of the run.
+- **Everyone saw the same results.** We all used the files in `results/`.
 
-Checkpoints are deleted at the end of every run and blocked by `.gitignore`.
-For the December test run, retrain the chosen config and predict in the same
-session.
+## The setups
 
-## Measured so far
+| Name | What it does | Setting we chose |
+|---|---|---|
+| E0 | Plain BCE, our baseline | |
+| E0b | E0 with a tuned threshold, no new training | |
+| E1 | BCE with `pos_weight` | 21 |
+| E2 | Balanced sampling | 15% malignant images per batch |
+| E3 | Focal loss | `gamma` 2, no `alpha` |
+| E5 | E2 and E3 together | as above |
+| E6 | BCE first, then AUC-margin loss | 8 + 4 epochs |
 
-`results/tuning/` and `results/runs/` are empty: all pilot runs were deleted on
-5 October when the inner validation split and the epoch count changed. They are
-still in the git history.
+All setups use ResNet-18 pretrained on ImageNet, 8 epochs and batch size 64. We tested the settings
+on inner validation (`results/tuning/`). For augmentation we tested a ladder of steps and chose `light`
+(crop, flips, small rotations, brightness and contrast). It had the best inner validation AUROC, but
+the steps were very close. In the analysis, every run is also scored with a tuned threshold (E0b, E1b and so on).
 
-What the pilots showed (`E0_full`, fold 0, T4 GPU):
-
-- Validation AUROC rises until about epoch 4, is flat (0.85–0.87) through
-  epoch 8, and drops after that while training loss keeps falling. Hence
-  8 epochs for every arm in `arms.json`.
-- One epoch of full fine-tuning takes about 1.7 minutes, so a run is ~13.5 min.
-- Inner validation has ~80 malignant images, so a single run's AUROC still moves
-  by about ±0.02. Compare augmentation variants on at least two folds or seeds.
-
-E3 uses `torchvision.ops.sigmoid_focal_loss`. Its two knobs are set per arm in
-`arms.json`: `gamma` (focusing, default 2.0) and optionally `alpha` (class
-weight, default -1 = off).
-
-`pos_weight` (E1) is set to 21, chosen on inner validation of fold 0 with full
-fine-tuning (`results/tuning/e1_pos_weight/summary.md`): the highest weight at
-which each extra melanoma found costs at most about 10 extra false alarms.
-`gamma: 2.0` without `alpha` (E3) was chosen on 17 Oct 2026 (`results/tuning/e3_gamma/`).
-E2 samples 15% malignant images per batch (`mal_frac: 0.15`), chosen on 17 Oct 2026
-from 10/15/20/25/50% on folds 0-2 (`results/tuning/e2_sampling/`): 15% and 20% were in
-the top 3 for AUPRC on every fold, and 15% had the best AUROC and the fewest false
-alarms to find 50% and 80% of melanomas. It is close to square-root sampling
-(Kang et al., 2020, https://arxiv.org/abs/1910.09217), which here gives ~12%.
-
-Budget: ~13.5 minutes per full run and ~8 per frozen run, 40 runs, so roughly
-7 GPU hours split three ways.
-
-## Augmentation test
-
-Before the grid, one augmentation is chosen and locked. `make_transform` in
-`src/data.py` has a ladder of five steps; each keeps everything before it:
-
-| `AUG` | Adds | Why |
-|-------|------|-----|
-| `none` | nothing | the control: what augmentation adds at all |
-| `base` | crop + flips | lesions appear at different scales |
-| `geo` | transpose, shift / scale / rotate | a lesion has no "up" |
-| `light` | brightness, contrast | cameras and lighting differ |
-| `colour` | hue, saturation | tests whether colour should be left alone |
-| `cutout` | one erased square | hair, rulers and ink cover parts of a lesion |
-| `randaug` | base + RandAugment (not on the ladder) | a generic automatic policy, as a contrast |
-
-Operations and strengths from `geo` upwards are those of the ISIC 2020 winning
-solution (Ha et al., 2020), implemented with torchvision.
-
-Protocol:
-
-1. `E0_full` only, so the choice cannot favour one of the treatments.
-2. Folds 0 and 1 for every step, `TAG` = the step name.
-3. Compare the mean best inner-validation AUROC, and the `val_loss` curves in
-   `history.csv` for overfitting. The held-out fold is not used for this choice.
-4. Pick the simplest step whose mean AUROC is within noise (±0.02) of the best.
-5. Lock it: change the default `aug` in `src/train.py`, then leave it alone.
-
-Round 1 (in `results/tuning/aug_round1/`, `E0_full`, folds 0 and 1): best
-inner AUROC base 0.862 / 0.863, geo 0.880 / 0.856, light 0.881 / 0.868,
-colour 0.871 / 0.862. All within noise of each other. Training loss rose with
-each step, but that is measured on augmented images, so it could not show
-whether overfitting really fell.
-
-Round 2 adds `none` and logs `train_clean_loss` / `train_clean_auroc`: a fixed
-sample of training images (same size as inner validation) scored each epoch
-*without* augmentation. The gap between those and `val_loss` / `val_auroc` is
-the overfitting measure.
-Round 2 runs are in `results/tuning/aug_round2/`.
-
-### Decision (11 October 2026): `light` is locked
-
-Best inner-validation AUROC, `E0_full`, seed 0:
-
-| `AUG` | Fold 0 | Fold 1 | Mean |
-|-------|--------|--------|------|
-| `none` | 0.853 | 0.849 | 0.851 |
-| `base` | 0.862 | 0.863 | 0.863 |
-| `geo` | 0.880 | 0.856 | 0.868 |
-| `light` | 0.881 | 0.868 | 0.875 |
-| `colour` | 0.871 | 0.862 | 0.867 |
-| `cutout` | 0.877 | 0.856 | 0.867 |
-| `randaug` | 0.869 | 0.865 | 0.867 |
-
-Bootstrap uncertainty of a single value is about ±0.015–0.02.
-
-- Without augmentation the model memorises the training set: AUROC on clean
-  training images reaches 1.000 by epoch 4 while validation AUROC falls from
-  0.85 to 0.54–0.75. Its best score only exists because epoch 1 is kept.
-- All augmented steps train stably for 8 epochs and are within noise of each
-  other. Colour, cutout and RandAugment (which also changes colour strongly) do
-  not help.
-- `light` was chosen because it had the highest AUROC on both folds and leaves
-  lesion colour unchanged. The steps cannot be separated statistically, so this
-  is a judgement call. Not tested: whether the choice also suits E1–E3, in
-  particular E2, whose sampler repeats each malignant image ~27 times per epoch.
-
-Every grid run uses `light` (the default in `src/train.py`); leave `AUG` empty.
-
-## The grid
-
-4 arms × 2 depths × 5 folds = 40 runs, split **by arm**:
-
-| Person | Arm |
-|--------|-----|
-| Luan | E1 — weighted loss |
-| David | E2 — balanced sampling |
-| Mikkel | E3 — focal loss |
-
-E0 (and therefore E0b) is shared. Each person owns their method end to end:
-builds it, tunes it, runs all its folds.
-
-This means method and machine coincide. We know, and we state it as a
-limitation in Methods rather than pretending otherwise.
-
-## Layout
+## What is in this repo
 
 ```
-.gitignore
-README.md
-configs/    arms.json  m12.json
-notebooks/  G10_run.ipynb  G10_grid.ipynb  G10_e2_sampling.ipynb  G10_analysis.ipynb  G10_m12.ipynb
-            G10_panderm.ipynb  G10_isic2019_check.ipynb  G10_test.ipynb
-splits/     dev_split.csv  test_split.csv  inner_split.csv
-src/        data.py  models.py  losses.py  train.py  eval.py  make_inner_split.py
-            panderm.py  check_institutions.py  isic2019.py  meta.py  test_eval.py
-docs/       test_protocol.md   (M13, fixed before the test set was opened)
-report/     main.tex  references.bib  make_figures.py  figures/   (the report; python report/make_figures.py rebuilds the figures)
-results/    runs/<arm>_<depth>_f<fold>_s<seed>/          the grid
-            tuning/<experiment>/<arm>_<depth>_f<fold>_s<seed>_<tag>/  test runs,
-                   one folder per experiment, each with a summary.md table
+notebooks/   the notebooks we run in Colab
+src/         the Python code (data, models, losses, training, metrics)
+configs/     the settings for each run
+splits/      our fixed train, validation and test splits
+results/     runs/    the grid (E0-E3, E5, E6)
+             tuning/  our tests of settings and augmentation
+             m12/     the extension
+             test/    the final models, the test set scores and our test set protocol
+             figures/ figures from the notebooks
+             results.csv  scores of the main grid (E0-E3)
+requirements.txt  the Python packages we used
 ```
 
-`notebooks/G10_grid.ipynb` runs the 40 grid runs as a queue (resumes after a
-disconnect). `notebooks/G10_m12.ipynb` runs the extension (M12): one base
-configuration with one change at a time from `configs/m12.json` (384 px images,
-EfficientNet-B0), results in `results/m12/`. `notebooks/G10_panderm.ipynb` is the
-M12 step with PanDerm_Base as a frozen encoder plus a linear probe (`src/panderm.py`),
-also reported without the University of Queensland images, which may overlap with
-PanDerm's pretraining data (`src/check_institutions.py`). The M12 step `isic2019`
-adds ISIC 2019 images to training only; `notebooks/G10_isic2019_check.ipynb` must run
-first and removes every ISIC 2019 image that duplicates an ISIC 2020 image (`src/isic2019.py`). The steps
-`panderm_ft` and `panderm_ft_isic2019` fine-tune the whole PanDerm network inside `train.run`
-(recipe in `src/panderm.py`; mixed precision is used only for these). `notebooks/G10_analysis.ipynb` reads every `preds.csv` in
-`results/runs/`, builds `results/results.csv` (the report's table, owned by one
-person), applies the Phase 3 decision rules and draws the report figures into
-`results/figures/`. No GPU needed. Still to come: `notebooks/G10_data.ipynb`
-(dataset figures).
+Each run has its own folder with three files: `config.json` (the settings), `history.csv` (loss and
+AUROC per epoch) and `preds.csv` (the prediction for each image). We do not keep the trained models.
+
+## The data
+
+The images are not in this zip. We used these datasets:
+
+| Data | Where | Used for |
+|---|---|---|
+| ISIC 2020, 256×256 (792 MB) | [`cdeotte/jpeg-melanoma-256x256`](https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-256x256) | all runs |
+| ISIC 2020, 384×384 | [`cdeotte/jpeg-melanoma-384x384`](https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-384x384) | the 384 px step |
+| ISIC 2019, 256×256 | [`cdeotte/jpeg-isic2019-256x256`](https://www.kaggle.com/datasets/cdeotte/jpeg-isic2019-256x256) | extra training images |
+| PanDerm_Base weights | [Google Drive link from the PanDerm README](https://drive.google.com/file/d/17J4MjsZu3gdBP6xAQi_NMDVvH65a00HB) | the PanDerm steps |
+
+With the Kaggle tool, one dataset is downloaded like this:
+
+```
+kaggle datasets download -d cdeotte/jpeg-melanoma-256x256
+```
+
+ISIC 2020 has 33,126 images, and 32,693 of them are in our splits after removing duplicates.
+The Python packages we used are listed in `requirements.txt`.
+
+## How to check our work
+
+These files are for reading and checking. Nothing needs to be trained, because all our results are saved in
+`results/`. You do not need a GPU or the images for this:
+
+- `notebooks/G10_analysis.ipynb` makes the tables and figures for the grid. Start Jupyter in the `notebooks` folder.
+- `results/test/summary.md` has the final test set scores, and each run folder has its predictions.
+
+The other notebooks show how we trained the networks. They were run in Google Colab with our GitHub
+repository, so they cannot be run from these files.
+
+| Notebook | What it does |
+|---|---|
+| `G10_run` | Trains one run, for example to test a setting |
+| `G10_e2_sampling` | Finds the sampling share for E2 |
+| `G10_grid` | Trains all the grid runs in a queue |
+| `G10_analysis` | Makes the tables and figures for the grid (no GPU needed) |
+| `G10_isic2019_check` | Finds and removes ISIC 2019 images that are also in ISIC 2020 |
+| `G10_panderm` | Tests PanDerm as a frozen network |
+| `G10_m12` | Runs the steps of the extension |
+| `G10_test` | Trains the three final models and scores the test set, once |
 
 ## Sources
 
@@ -297,7 +223,3 @@ best-epoch saving (lecture 6), focal loss (lecture 8), checkpoints (Lab 6).
 - Patient-grouped folds on ISIC 2020: C. Deotte, [Triple Stratified KFold](https://www.kaggle.com/code/cdeotte/triple-stratified-kfold-with-tfrecords).
 - Separate data for model selection and for the final estimate (inner validation, held-out fold, locked test set): Cawley & Talbot (2010), [JMLR 11](https://jmlr.org/papers/v11/cawley10a.html).
 - Fixed seeds, a simple baseline first, one change at a time, evaluating on the whole validation set: A. Karpathy (2019), [A Recipe for Training Neural Networks](https://karpathy.github.io/2019/04/25/recipe/).
-
-## Dates
-
-Proposal 25 September 2026. Final report 4 December 2026.

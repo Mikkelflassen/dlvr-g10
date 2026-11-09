@@ -1,4 +1,4 @@
-"""Dataset and loaders. Reads the frozen split CSVs — never recomputes a split.
+"""Our dataset and data loaders. We read the saved split files and never make the splits again.
 
 Data: ISIC 2020 (Rotemberg et al., 2021, https://doi.org/10.1038/s41597-021-00815-z)
 in Chris Deotte's 256x256 JPEG version,
@@ -18,8 +18,9 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
+# reads our fixed splits and adds where each image is
 def load_splits(splits_dir, data_root):
-    """dev (with fold 0-4) and test, with an absolute `path` column."""
+    """Reads the dev set (folds 0-4) and the test set, and adds the path of each image."""
     splits_dir, data_root = Path(splits_dir), Path(data_root)
     out = []
     for name in ("dev_split.csv", "test_split.csv"):
@@ -31,14 +32,14 @@ def load_splits(splits_dir, data_root):
 
 # Train, validation and test sets: see lecture 2, section 3.
 def inner_split(dev, test_fold, splits_dir):
-    """Training folds -> (train, inner_val), read from splits/inner_split.csv.
+    """Splits the training folds into train and inner validation, using splits/inner_split.csv.
 
-    inner_val (20% of the training folds, grouped by patient, stratified by target)
-    is used for epoch selection, threshold tuning and arm settings. The held-out
-    fold is never touched for any choice. The split is fixed in the file, so it is
-    the same for every seed; how it was made is in make_inner_split.py.
+    Inner validation is 20% of the training folds, grouped by patient and stratified by
+    target. We use it to choose the best epoch, the threshold and the settings of a setup.
+    The held-out fold is not used for these choices. The split is saved in a file, so it is
+    the same for every seed. How we made it is in make_inner_split.py.
 
-    Why selection needs its own split: Cawley & Talbot (2010),
+    Why these choices need their own split: Cawley & Talbot (2010),
       https://jmlr.org/papers/v11/cawley10a.html
     """
     trn = dev[dev.fold != test_fold].reset_index(drop=True)
@@ -63,11 +64,11 @@ def _transpose(img):
 # Converted from albumentations to torchvision with AI (Claude).
 # See also lecture 6, Code 3.
 def make_transform(train, augment=False, aug="base", size=256):
-    """EDIT THE TRAINING AUGMENTATION HERE — this is the only place it lives.
+    """All our training augmentation is defined here.
 
-    Applies to training images only; validation and test are never augmented.
+    We only augment training images. Validation and test images are never augmented.
 
-    `aug` picks a step on a ladder; each step adds one group to the previous one:
+    `aug` picks a step on a ladder. Each step adds one group to the step before:
       none    nothing                             the control: what augmentation adds at all
       base    crop + flips                        what a lesion looks like at other scales
       geo     + transpose, shift / scale / rotate a lesion has no "up"
@@ -91,8 +92,8 @@ def make_transform(train, augment=False, aug="base", size=256):
     `get_transforms` in the ISIC 2020 winning solution (Ha et al., 2020, MIT):
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
       https://arxiv.org/abs/2010.05351
-    They use albumentations; we use the torchvision equivalents, so the mapping is
-    close but not exact (noted per line). Not used from their list: blur / noise,
+    They use albumentations and we use the torchvision versions, so it is close but
+    not exact (we note this per line). We did not use these from their list: blur / noise,
     optical / grid / elastic distortion and CLAHE.
       https://docs.pytorch.org/vision/stable/transforms.html
     Cutout: DeVries & Taylor (2017), https://arxiv.org/abs/1708.04552
@@ -169,7 +170,7 @@ class ISICDataset(Dataset):
     def __init__(self, csv, transform=None, meta_cols=None):
         self.csv = csv.reset_index(drop=True)
         self.transform = transform
-        # M12 metadata step: ((image, metadata), target) instead of (image, target).
+        # Metadata step: ((image, metadata), target) instead of (image, target).
         self.meta = None if meta_cols is None else self.csv[list(meta_cols)].to_numpy(np.float32)
 
     def __len__(self):
@@ -191,8 +192,7 @@ def sampling_weights(target, mal_frac):
     """Per-image sampling weights so that a share `mal_frac` of the images drawn is
     malignant on average. Adapted from ptrblck (see make_loader): weight = wanted
     share of the class / number of images in it. With mal_frac = 0.5 this is his
-    1 / class count (times 0.5, which the sampler normalises away), i.e. the 50/50
-    sampling used before 17 Oct 2026."""
+    1 / class count (times 0.5, which the sampler normalises away), so 50/50 sampling."""
     target = np.asarray(target).astype(int)
     class_sample_count = np.array(
         [len(np.where(target == t)[0]) for t in np.unique(target)])
@@ -201,6 +201,7 @@ def sampling_weights(target, mal_frac):
     return torch.from_numpy(samples_weight).double()
 
 
+# E2 and E5 get the sampler, everything else just shuffles
 def make_loader(df, batch_size=64, train=False, augment=False,
                 balanced=False, workers=2, aug="base", mal_frac=0.5, size=256, meta_cols=None):
     """balanced=True is E2: oversample malignant so that on average a share

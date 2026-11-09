@@ -1,12 +1,12 @@
-"""M13: scoring the locked test set. Run once, after the three final runs exist.
+"""Here we score the locked test set. We ran this once, after the three final runs were done.
 
-Everything here was fixed before the test set was opened (docs/test_protocol.md):
-models, thresholds (configs/test.json), metrics, and the bootstrap.
+We fixed everything here before we opened the test set (results/test/protocol.md):
+the models, the thresholds (configs/test.json), the metrics and the bootstrap.
 
-Uncertainty: the test set has ~80 melanomas, so every number gets a 95% confidence
-interval from a bootstrap that resamples *patients* (a patient's images stay
-together, as in our splits), 2,000 resamples. Differences between models are
-paired: the same resample scores both models.
+Uncertainty: the test set only has about 80 melanomas, so every number gets a 95% confidence
+interval from a bootstrap with 2,000 resamples. We resample *patients*, so all images from
+one patient stay together, as in our splits. For differences between models we use the
+same resample for both models.
   Efron & Tibshirani (1993), An Introduction to the Bootstrap.
   Patient-level (cluster) resampling: Field & Welsh (2007), https://doi.org/10.1111/j.1467-9868.2007.00593.x
 Metrics: scikit-learn average_precision_score (AUPRC) and roc_auc_score;
@@ -24,6 +24,7 @@ from eval import ece, counts
 N_BOOT = 2000
 
 
+# all the numbers for one model
 def _metrics(y, p, t):
     outcome = counts(y, (p >= t).astype(int))
     return {
@@ -96,6 +97,7 @@ def evaluate(repo, out_dir=None, seed=0):
     return result
 
 
+# writes the tables for summary.md
 def _markdown(result):
     lines = [
         f"# Test set (opened once) — {result['n_images']} images, {result['n_melanomas']} melanomas, "

@@ -1,4 +1,4 @@
-"""ResNet-18, one logit. Two fine-tuning depths, fixed across all arms.
+"""Our ResNet-18 with one output. We use the same two fine-tuning depths for all setups.
 
 Adapted from the PyTorch "Transfer Learning for Computer Vision" tutorial by
 Sasank Chilamkurthy (BSD-3-Clause):
@@ -15,7 +15,7 @@ BACKBONES = ("resnet18", "efficientnet_b0")
 
 def build_model(depth="full", backbone="resnet18"):
     """depth: 'frozen' = final layer only, 'full' = whole network.
-    backbone: 'resnet18' (every run up to M12) or 'efficientnet_b0' (M12)."""
+    backbone: 'resnet18' (the grid) or 'efficientnet_b0' (the extension)."""
     if depth not in ("frozen", "full"):
         raise ValueError(f"depth must be 'frozen' or 'full', got {depth!r}")
     if backbone not in BACKBONES:

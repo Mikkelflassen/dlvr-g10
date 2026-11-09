@@ -1,12 +1,12 @@
-"""M12 step `panderm`: a dermatology foundation model as a frozen encoder.
+"""Step `panderm`: a foundation model for skin images as a frozen encoder.
 
 PanDerm (Yan et al., 2025, Nature Medicine, https://arxiv.org/abs/2410.15038) is a
-ViT pretrained with self-supervised learning on ~2 million skin images. We use the
-smaller PanDerm_Base (ViT-B/16, 768 features). The encoder is frozen: each image is
-passed through it once, and only a linear classifier is trained on the features
-(a "linear probe", the evaluation the PanDerm authors report as close to full
-fine-tuning). This is the same depth as our `frozen` arms, so it can be compared
-with E0_frozen (ImageNet ResNet-18) as well as with the M12 base (E0_full, tuned threshold).
+ViT pretrained with self-supervised learning on about 2 million skin images. We use the
+smaller PanDerm_Base (ViT-B/16, 768 features). The encoder is frozen: we pass each image
+through it once and only train a linear classifier on the features (a "linear probe",
+which the PanDerm authors say is close to full fine-tuning). This is the same depth as
+our `frozen` arms, so we can compare it with E0_frozen (ImageNet ResNet-18) and with the
+base of the extension (E0_full, tuned threshold).
 
 Code and weights: https://github.com/SiyuanYan1/PanDerm (cloned at run time).
   - model definition: classification/models/modeling_finetune.py,
@@ -20,13 +20,11 @@ Code and weights: https://github.com/SiyuanYan1/PanDerm (cloned at run time).
     https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html
 
 Leakage check (see check_institutions.py): PanDerm's pretraining includes in-house
-Australian cohorts (MYM, HOP) that are likely the same studies as ISIC 2020's
-University of Queensland images. Results are therefore also reported without
-Queensland images (`score_without`).
+Australian cohorts (MYM, HOP). They are likely the same studies as the University of
+Queensland images in ISIC 2020, so we also give results without those images (`score_without`).
 
-Output: one folder per fold, results/m12/E0_frozen_f<fold>_s0_panderm/, with the
-same config.json / history.csv / preds.csv as every other run, so eval.score_run
-works on it unchanged.
+Each fold gets a folder, results/m12/E0_frozen_f<fold>_s0_panderm/, with the same
+config.json, history.csv and preds.csv as every other run, so eval.score_run works on it.
 """
 from pathlib import Path
 import importlib.util
@@ -72,11 +70,11 @@ def _modeling(panderm_repo):
 
 # The key clean-up and the missing-weights check were written with AI (Claude).
 def _load_weights(model, checkpoint):
-    """Copy the pretrained weights into `model` by name.
+    """Copies the pretrained weights into `model` by name.
 
-    Their builder loads with strict=False, which would also accept a file with
-    none of the right keys; we check that every encoder weight was found.
-    The pretraining head (if any) is dropped first: it never fits our one-logit head.
+    Their builder loads with strict=False, which would also accept a file with none of
+    the right keys, so we check that every encoder weight was found. We first drop the
+    pretraining head (if there is one), because it never fits our head with one output.
     """
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     for key in ("model", "state_dict"):
@@ -103,12 +101,12 @@ def load_panderm(panderm_repo, checkpoint, device):
 
 
 # ---------------------------------------------------------------------------
-# Full fine-tuning (M12 steps panderm_ft, panderm_ft_isic2019), used by train.run.
+# Full fine-tuning (steps panderm_ft and panderm_ft_isic2019), used by train.run.
 # The recipe follows PanDerm's own fine-tuning script (classification/
 # run_class_finetuning.py, README "Fine-tuning"): AdamW, weight decay 0.05,
 # layer-wise learning-rate decay 0.65, stochastic depth (drop_path) 0.2, cosine
 # schedule with linear warm-up, CLS token + linear head (init_scale 0.001,
-# layer scale 0.1). Changed to fit our protocol and budget: 8 epochs instead of
+# layer scale 0.1). We changed a few things to fit our setup and GPU time: 8 epochs instead of
 # 50 (warm-up 1 instead of 10), batch 64 instead of 128 with the learning rate
 # scaled linearly (5e-4 -> 2.5e-4, Goyal et al. 2017, https://arxiv.org/abs/1706.02677),
 # plain BCE with one logit and no sampler (arm E0), our "light" augmentation
@@ -170,6 +168,7 @@ def cosine_lr(base, final, epochs, steps_per_epoch, warmup_epochs=1):
     return np.concatenate([np.linspace(0, base, warm, endpoint=False), cos])
 
 
+# only images, we don't need labels for the features
 class _Images(Dataset):
     def __init__(self, paths):
         self.paths = list(paths)
@@ -181,6 +180,7 @@ class _Images(Dataset):
         return TRANSFORM(Image.open(self.paths[index]).convert("RGB"))
 
 
+# runs every image through panderm once and keeps the features
 @torch.no_grad()
 def extract(model, df, device, batch_size=128, workers=2):
     """One 768-number feature per image (CLS token), in the order of df."""
@@ -198,14 +198,13 @@ def extract(model, df, device, batch_size=128, workers=2):
 
 # Written with AI (Claude). See also lecture 4, Code 13.
 def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=None):
-    """Train the linear probe for one held-out fold and write the run folder.
+    """Trains the linear probe for one held-out fold and saves the run folder.
 
-    The same splits as every other run: train / inner_val from inner_split.csv,
-    the held-out fold is only predicted. C is chosen by inner-validation AUROC,
-    the same criterion that picks the best epoch in train.run.
+    We use the same splits as every other run. The held-out fold is only predicted.
+    We choose C by inner-validation AUROC, the same way we choose the best epoch in train.run.
 
-    extra: optional (features, targets) of ISIC 2019 images (isic2019.load_extra),
-    added to the training part only, as in train.run with extra_train="isic2019".
+    extra: optional (features, targets) of ISIC 2019 images (isic2019.load_extra).
+    We only add them to the training part, as in train.run with extra_train="isic2019".
     The run is then tagged panderm_isic2019.
     """
     start = time.time()
@@ -258,6 +257,7 @@ def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=Non
     return out
 
 
+# same score but without one hospital, for the leakage check
 def score_without(run_dir, attribution_csv, institution="Queensland"):
     """AUPRC / AUROC on the held-out fold, with all images and without one institution."""
     preds = pd.read_csv(Path(run_dir) / "preds.csv")

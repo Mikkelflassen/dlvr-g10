@@ -1,15 +1,15 @@
-"""One run = one config + one fold. Writes a run folder; computes no metrics.
+"""Here we train one run: one setup on one fold. Each run is saved in its own folder.
 
-Everything the report needs is derived later from preds.csv by eval.py.
+We do not calculate any metrics here. They are calculated later from preds.csv in eval.py.
 
-The training loop is adapted from two sources:
+Our training loop is adapted from two sources:
   [T] PyTorch "Transfer Learning for Computer Vision" tutorial, `train_model`
       (S. Chilamkurthy, BSD-3-Clause)
       https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py
   [H] ISIC 2020 winning solution, `train.py` (Ha et al., 2020, MIT)
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/train.py
-The workflow around it (fixed seed, one change at a time, evaluate on the whole
-validation set) follows A. Karpathy, "A Recipe for Training Neural Networks":
+The way we worked around it (fixed seed, one change at a time, evaluating on the
+whole validation set) follows A. Karpathy, "A Recipe for Training Neural Networks":
   https://karpathy.github.io/2019/04/25/recipe/
 """
 import json
@@ -30,6 +30,7 @@ from models import build_model, default_lr
 from losses import build_loss
 
 
+# saves which code version a run used
 def _git_hash():
     try:
         return subprocess.check_output(
@@ -49,8 +50,9 @@ def set_seed(seed=0):
     torch.backends.cudnn.deterministic = True
 
 
+# metadata runs have two inputs, the normal runs only images
 def _forward(model, inputs, device):
-    """One forward pass; inputs is an image batch, or [images, metadata] (M12 metadata step)."""
+    """One forward pass. The input is a batch of images, or [images, metadata] in the metadata step."""
     if isinstance(inputs, (list, tuple)):
         return model(*[tensor.to(device, non_blocking=True) for tensor in inputs])
     return model(inputs.to(device, non_blocking=True))
@@ -58,10 +60,10 @@ def _forward(model, inputs, device):
 
 # See also lab 2.
 def val_epoch(model, loader, criterion, device, amp=False):
-    """Adapted from [H] `val_epoch`: loss and probabilities over the whole loader.
+    """Adapted from [H] `val_epoch`. We get the loss and the probabilities for all images.
 
-    Changes: sigmoid on one logit instead of softmax, no test-time augmentation,
-    and the loss is averaged per image instead of per batch.
+    We changed three things: we use sigmoid on one output instead of softmax, we do not
+    use test-time augmentation, and we average the loss per image instead of per batch.
     """
     model.eval()
     val_loss = 0.0
@@ -82,8 +84,9 @@ def val_epoch(model, loader, criterion, device, amp=False):
     return val_loss / len(PROBS), PROBS
 
 
+# we only need the probabilities here
 def predict(model, loader, device, amp=False):
-    """Probabilities only — the same loop as `val_epoch` without the loss."""
+    """Only the probabilities. It is the same loop as `val_epoch`, without the loss."""
     model.eval()
     PROBS = []
     with torch.no_grad():
@@ -100,18 +103,18 @@ def predict(model, loader, device, amp=False):
 # https://github.com/Optimization-AI/LibAUC/blob/main/examples/02_v140_Optimizing_AUROC_with_ResNet20_on_Imbalanced_CIFAR10.ipynb
 def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader, train_check,
               device, history, since):
-    """Arm E6, stage 2: fine-tune the stage-1 (plain BCE) network with the AUC-margin loss.
+    """Setup E6, stage 2: we fine-tune the stage 1 network (plain BCE) with the AUC-margin loss.
 
     Deep AUC maximisation, Yuan et al. (ICCV 2021), https://arxiv.org/abs/2012.03173,
-    with the LibAUC library (https://libauc.org, https://github.com/Optimization-AI/LibAUC):
-    the network is first trained with cross-entropy (stage 1 = our E0), then the
-    final layer is re-initialised and the whole network is trained with AUCMLoss
-    and the PESG optimizer. AUCMLoss works on pairs of classes through running
-    statistics (a, b, alpha), so it needs no special sampler; p = the share of
-    melanomas in the whole training set (imratio, auto=False) instead of per batch.
-    Settings are LibAUC's defaults and tutorial schedule: lr 0.1, margin 1.0,
-    epoch_decay 0.002, weight_decay 1e-5, learning rate / 10 halfway.
-    Best epoch: highest inner-validation AUROC within stage 2, as in every run.
+    with the LibAUC library (https://libauc.org, https://github.com/Optimization-AI/LibAUC).
+    First the network is trained with cross-entropy (stage 1, which is our E0). Then we
+    reset the final layer and train the whole network with AUCMLoss and the PESG optimizer.
+    AUCMLoss works on pairs of classes through running statistics (a, b, alpha), so it does
+    not need a special sampler. We set p to the share of melanomas in the whole training
+    set (imratio, auto=False) instead of per batch.
+    We use LibAUC's default settings and tutorial schedule: lr 0.1, margin 1.0,
+    epoch_decay 0.002, weight_decay 1e-5, and the learning rate divided by 10 halfway.
+    The best epoch is the one with the highest inner-validation AUROC in stage 2, as in every run.
     """
     import warnings
     from libauc.losses import AUCMLoss
@@ -165,27 +168,30 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
 
 # The setup code here was written with AI (Claude). Borrowed parts name their source below.
 def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoch_hook=None):
-    """cfg keys: arm, depth, fold, seed, epochs, batch_size,
-                 pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
+    """Trains one run and saves it in its own folder.
 
-    `tag` appends to the run folder name, so the same arm/fold/seed can be run
-    more than once with different settings without overwriting itself.
+    The settings in cfg: arm, depth, fold, seed, epochs, batch_size,
+    pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
+
+    `tag` is added to the run folder name, so we can run the same arm, fold and seed
+    with different settings without overwriting earlier runs.
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     cfg = dict(cfg)
+    # anything not in the config gets these defaults
     cfg.setdefault("seed", 0)
     cfg.setdefault("epochs", 5)
     cfg.setdefault("batch_size", 64)
     cfg.setdefault("lr", default_lr(cfg["depth"]))
     cfg.setdefault("augment", True)
-    # Augmentation step, see data.make_transform. Locked to "light" on 11 Oct 2026
-    # after the augmentation test (README, "Augmentation test"); every grid run uses it.
+    # We chose the augmentation step "light" after testing the steps on inner validation.
+    # See make_transform in data.py.
     cfg.setdefault("aug", "light")
-    # M12 options; the defaults are what every run before M12 used.
+    # Settings for the extension. The defaults are what the grid used.
     cfg.setdefault("img_size", 256)
     cfg.setdefault("backbone", "resnet18")
     cfg.setdefault("extra_train", None)            # "isic2019": see isic2019.py
-    # PanDerm full fine-tuning (M12): recipe and sources in panderm.py.
+    # Full fine-tuning of PanDerm. The recipe and the sources are in panderm.py.
     if cfg["backbone"] == "panderm_base":
         cfg.setdefault("panderm_repo", "/content/PanDerm")
         cfg.setdefault("panderm_ckpt", "/content/panderm_bb_data6_checkpoint-499.pth")
@@ -194,8 +200,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         cfg.setdefault("drop_path", 0.2)
         cfg.setdefault("warmup_epochs", 1)
         cfg.setdefault("min_lr", 1e-6)
-    # Mixed precision (float16 on the GPU) is only used for PanDerm, where a ViT-B
-    # does not fit the time budget without it; every earlier run is unchanged.
+    # We only use mixed precision for PanDerm, because a ViT-B would take too long without it.
     cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
     if cfg["arm"] == "E6":
@@ -207,14 +212,12 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         if cfg["backbone"] != "resnet18":
             raise ValueError("E6 is set up for ResNet-18 (model.fc)")
     cfg.setdefault("meta", False)                  # True: age, sex, body site next to the image (meta.py)
-    # Data-loading processes. 2 on a T4 runtime (2 CPUs), as in every run before
-    # 17 Oct 2026; more on runtimes with more CPUs, which only changes the speed.
+    # more cpus just makes loading faster
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))
-    # E5 = E2's sampler + E3's focal loss (workflow Phase 4).
+    # E5 is E2's sampler together with E3's focal loss.
     SAMPLER_ARMS, FOCAL_ARMS = ("E2", "E5"), ("E3", "E5")
     cfg.setdefault("balanced", cfg["arm"] in SAMPLER_ARMS)
-    # pos_weight is only used by E1 and gamma/alpha only by E3 (losses.build_loss);
-    # on any other arm they would be ignored and the run mislabelled, so stop here.
+    # stop if a setting does nothing on this arm, else the run gets a wrong name
     if cfg.get("pos_weight") is not None and cfg["arm"] != "E1":
         raise ValueError(f"pos_weight is set but the arm is {cfg['arm']}; it only has an effect on E1")
     if cfg.get("mal_frac") is not None and cfg["arm"] not in SAMPLER_ARMS:
@@ -223,8 +226,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         raise ValueError(f"sampling is set but the arm is {cfg['arm']}; it only has an effect on E2/E5")
     if cfg["arm"] in SAMPLER_ARMS:
         cfg.setdefault("mal_frac", 0.5)
-        # "fixed": the same share every epoch. "progressive": progressively-balanced
-        # sampling (Kang et al., 2020, Sec. 3, https://arxiv.org/abs/1910.09217): the
+        # "fixed" uses the same share every epoch. "progressive" is progressively-balanced
+        # sampling (Kang et al., 2020, Sec. 3, https://arxiv.org/abs/1910.09217), where the
         # share moves linearly from the natural one (epoch 0) to mal_frac (last epoch).
         cfg.setdefault("sampling", "fixed")
         if cfg["sampling"] not in ("fixed", "progressive"):
@@ -234,9 +237,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     set_seed(cfg["seed"])
 
-    # final=True (M13, the test set): train on ALL dev images, no inner validation, keep
-    # the last epoch, and predict the locked test set. Decided before the test set was
-    # opened: docs/test_protocol.md.
+    # final=True is for the test set. We train on all dev images with no inner validation,
+    # keep the last epoch and predict the locked test set. See results/test/protocol.md.
     final = bool(cfg.get("final"))
     name = (f"{cfg['arm']}_{cfg['depth']}_final_s{cfg['seed']}" if final
             else f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}")
@@ -253,8 +255,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
         held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
     tr_2020 = tr
-    # M12 step `isic2019`: extra training images only. inner_val and the held-out
-    # fold stay pure ISIC 2020, so every number stays comparable with the grid.
+    # Step `isic2019`: we only add extra training images. Inner validation and the held-out
+    # fold stay ISIC 2020, so the numbers can be compared with the grid.
     if cfg.get("extra_train") == "isic2019":
         from isic2019 import load_extra
         ext = load_extra(splits_dir, cfg["extra_root"])
@@ -283,12 +285,11 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
                                mal_frac=cfg.get("mal_frac", 0.5), size=cfg["img_size"])
     val_loader = None if inner_val is None else make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
                              meta_cols=meta_cols)
-    # A fixed sample of training images, the same size as inner_val, evaluated each
-    # epoch WITHOUT augmentation. Comparing it with inner_val gives the real gap
-    # between training and validation performance (train_loss above is measured on
-    # augmented images, so it rises with heavier augmentation by construction).
-    # Drawn from the ISIC 2020 training images only, so it stays comparable when
-    # ISIC 2019 is added (M12 step isic2019).
+    # We score a fixed sample of training images each epoch, without augmentation. It has
+    # the same size as inner validation. Comparing the two shows the real gap between
+    # training and validation. (train_loss is measured on augmented images, so it goes up
+    # with heavier augmentation.) We only draw from the ISIC 2020 training images, so the
+    # numbers can still be compared when we add ISIC 2019.
     n_check = 4500 if inner_val is None else len(inner_val)
     train_check = tr_2020.sample(n=min(n_check, len(tr_2020)),
                             random_state=cfg["seed"]).reset_index(drop=True)
@@ -339,15 +340,13 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     # See also lecture 2, Code 1 and lab 2 (training loop), and lecture 6, Code 7 (saving the best epoch).
     # Training loop adapted from [T] `train_model`: a temporary checkpoint holds the
-    # best epoch and is reloaded at the end. The best epoch is chosen by validation
-    # AUROC as in [H] (`if auc > auc_max: torch.save(...)`), not by accuracy as in [T]
-    # — and not by loss, which is not comparable across arms.
+    # best epoch, and we load it again at the end. We choose the best epoch by validation
+    # AUROC as in [H] (`if auc > auc_max: torch.save(...)`). We do not use accuracy as in
+    # [T], and we do not use the loss, because it cannot be compared across arms.
     #
     # The resume code was written with AI (Claude). Based on lab 6 (save_checkpoint).
-    # resume_dir (long runs only): after every epoch the full training state is saved
-    # there (e.g. on Google Drive), so a run cut off by a Colab disconnect continues
-    # from its last finished epoch instead of starting over. The order of the images
-    # after a resume differs from an uninterrupted run; nothing else does.
+    # resume_dir is for the long runs: we save everything after each epoch,
+    # so if colab stops we only lose that epoch
     # https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html
     # epoch_hook(out, epoch): called after every epoch, e.g. to push history.csv.
     with TemporaryDirectory() as tempdir:
@@ -470,8 +469,8 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         best_auc = auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
                              train_check, device, history, since)
 
-    # Per-image predictions are saved so that every metric can be computed later,
-    # like the out-of-fold prediction files written by [H] `evaluate.py`.
+    # We save the prediction for each image, so we can calculate every metric later.
+    # [H] `evaluate.py` does the same with its out-of-fold prediction files.
     if final:
         preds = pd.DataFrame({"image_name": held.image_name, "target": held.target,
                               "prob": predict(model, held_loader, device, cfg["amp"]), "split": "test"})

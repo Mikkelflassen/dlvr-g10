@@ -1,6 +1,6 @@
-"""All metrics, computed from saved preds.csv files. Nothing here retrains.
+"""Here we calculate all our metrics from the saved preds.csv files. We do not train anything here.
 
-Metrics are scikit-learn functions:
+The metrics are scikit-learn functions:
   https://scikit-learn.org/stable/modules/model_evaluation.html
 """
 import json
@@ -14,14 +14,14 @@ from sklearn.metrics import (roc_auc_score, average_precision_score,
 
 
 def ece(y, p, n_bins=15):
-    """Expected calibration error — the E3 calibration claim lives or dies here.
+    """Expected calibration error (ECE). It shows how far the network's percentages are from the real rates.
 
     Method: Naeini et al. (2015); Guo et al. (2017), https://arxiv.org/abs/1706.04599
     Adapted from `_ECELoss` in Guo et al.'s code (G. Pleiss, MIT):
       https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py
-    Changes: NumPy instead of torch, and the binary form — in each bin the mean
-    predicted probability of malignant is compared with the observed fraction of
-    malignant, instead of top-class confidence with accuracy.
+    We changed two things. We use NumPy instead of torch, and we use the binary form: in
+    each bin we compare the mean predicted probability of malignant with the real share
+    of malignant, instead of top-class confidence with accuracy.
     """
     y, p = np.asarray(y, dtype=float), np.asarray(p, dtype=float)
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
@@ -42,8 +42,8 @@ def ece(y, p, n_bins=15):
 
 # F1 and the precision-recall trade-off: see the bonus lecture (week 4), sections 5 and 7.
 def best_threshold(y, p):
-    """The threshold with the highest F1. Tuned on inner_val ONLY — tuning it on
-    the held fold would break the comparison.
+    """Finds the threshold with the highest F1. We only tune it on inner validation,
+    because tuning it on the held-out fold would make the comparison unfair.
 
     Library: sklearn.metrics.precision_recall_curve gives precision and recall at
     every candidate threshold.
@@ -128,8 +128,9 @@ def score_run(run_dir, threshold=0.5):
     }
 
 
+# one row per run, plus a row with the tuned cut
 def build_results(runs_dir, out_csv=None, tuned_all=False):
-    """Every run folder -> one table. This is what the report's results section uses.
+    """Makes one table from all the run folders.
 
     Each trained run gives one row at threshold 0.5 (cut "0.5"). Each E0 run gives
     a second row, arm "E0b": the same predictions with the threshold tuned on
@@ -156,7 +157,7 @@ def build_results(runs_dir, out_csv=None, tuned_all=False):
 
 
 def summarise(results):
-    """Mean +/- std across folds, per arm x depth — the headline table."""
+    """Mean and std across the folds, for each arm and depth."""
     return (
         results
         .groupby(["arm", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
@@ -165,6 +166,7 @@ def summarise(results):
     )
 
 
+# E0 again but with the tuned threshold
 def e0b(runs_dir, depth, fold, seed=0):
     """E0b: E0's model with the threshold tuned on inner_val instead of 0.5. No training."""
     return (
@@ -249,10 +251,10 @@ def tuning_summary(folder, out_name="summary.md"):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 decision rules (group workflow document, "DeepLearning 5.pdf").
-# They were fixed before the grid was run, so they cannot be bent to fit the
-# results. Only rows at cut "0.5" are used: AUPRC and ECE do not depend on the cut.
+# Our decision rules. We wrote them down before we ran the grid, so the results could
+# not influence them. We only use rows at cut "0.5", because AUPRC and ECE do not depend on the cut.
 
+# same folds for both arms so the comparison is fair
 def _paired(results, depth, a, b, metric="auprc"):
     """Per-fold metric of arm a and arm b at one depth, folds both have."""
     rows = results[(results.cut == "0.5") & (results.depth == depth)]
@@ -262,9 +264,10 @@ def _paired(results, depth, a, b, metric="auprc"):
     return scores_a.loc[folds], scores_b.loc[folds]
 
 
+# our rule: higher mean and better on 4 of 5 folds
 def trick_helps(results, arm, depth, min_wins=4):
     """A trick "helps" if its mean AUPRC is above E0's AND it is higher than E0
-    in at least `min_wins` of the folds (4 of 5 in the workflow)."""
+    in at least `min_wins` of the folds (4 of 5 in our rule)."""
     trick, baseline = _paired(results, depth, arm, "E0")
     wins = int((trick > baseline).sum())
 
@@ -283,9 +286,10 @@ def trick_helps(results, arm, depth, min_wins=4):
     }
 
 
+# if they are almost equal the lower ece wins
 def e1_vs_e2(results, depth, tie=0.01):
     """E1 vs E2 by mean AUPRC; within `tie` of each other -> lower mean ECE wins.
-    The workflow says "near tie" without a number; 0.01 AUPRC is our choice."""
+    We count a difference under 0.01 AUPRC as a near tie."""
     auprc_e1, auprc_e2 = _paired(results, depth, "E1", "E2")
     ece_e1, ece_e2 = _paired(results, depth, "E1", "E2", "ece")
     diff = auprc_e1.mean() - auprc_e2.mean()
@@ -310,6 +314,7 @@ def e1_vs_e2(results, depth, tie=0.01):
     }
 
 
+# if the gap is smaller than the fold spread, frozen wins
 def depth_choice(results, arm):
     """Higher mean AUPRC wins; if the gap is within the fold-to-fold spread
     (the larger of the two standard deviations), frozen wins as the simpler one."""

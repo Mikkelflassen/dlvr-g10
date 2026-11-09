@@ -1,19 +1,18 @@
-"""Which institution each ISIC 2020 image comes from, and how many of our images
-and melanomas each institution has in the dev and test splits.
+"""Here we find out which institution each ISIC 2020 image comes from, and how many
+of our images and melanomas each institution has in the dev and test splits.
 
-Why (18 Oct 2026): PanDerm (Yan et al. 2025) was pretrained on the in-house
-Australian cohorts "MYM" (Mind Your Moles) and "HOP" (high-risk sequential
-dermoscopy). ISIC 2020's University of Queensland images come from the same
-kind of studies (Rotemberg et al. 2021, Sci Data 8:34). If the Queensland share
-is small, PanDerm can be evaluated on non-Queensland images only.
+Why: PanDerm (Yan et al. 2025) was pretrained on the in-house Australian cohorts "MYM"
+(Mind Your Moles) and "HOP" (high-risk sequential dermoscopy). The University of
+Queensland images in ISIC 2020 come from the same kind of studies (Rotemberg et al.
+2021, Sci Data 8:34). So we also want to score PanDerm without the Queensland images.
 
 Data: the ISIC Archive API, collection 70 = "Challenge 2020: Training"
 (33,126 images). Each image record has an `attribution` field.
   https://api.isic-archive.com/api/docs/v2
 
-Usage (Colab, from the repo root):  python src/check_institutions.py
-Writes splits/isic2020_attribution.csv (image_name, patient_id, attribution)
-and prints the counts. Needs internet; takes a few minutes (~330 requests).
+Run it from the repo root with  python src/check_institutions.py
+It saves splits/isic2020_attribution.csv (image_name, patient_id, attribution) and prints
+the counts. It needs internet and takes a few minutes (about 330 requests).
 """
 from pathlib import Path
 import time
@@ -29,8 +28,10 @@ if out.exists():
     attr = pd.read_csv(out)
     print(f"Read {len(attr)} rows from {out.name}")
 else:
+    # the api gives 100 images at a time, so we go page by page
     rows, url = [], f"{URL}?collections=70&limit=100"
     while url:
+        # the api sometimes fails, so we try 5 times
         for attempt in range(5):
             try:
                 response = requests.get(url, timeout=60)
@@ -62,6 +63,7 @@ df = pd.concat([dev, test])[["image_name", "target", "split", "fold"]]
 df = df.merge(attr[["image_name", "attribution"]], on="image_name", how="left")
 print(f"\nImages without attribution: {df.attribution.isna().sum()}")
 
+# images and melanomas per hospital, in dev and test
 table = (
     df.groupby(["attribution", "split"])
     .agg(images=("target", "size"), melanomas=("target", "sum"))

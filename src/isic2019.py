@@ -1,14 +1,13 @@
-"""M12 step `isic2019`: ISIC 2019 images as extra *training* data.
+"""Step `isic2019`: we use ISIC 2019 images as extra *training* data.
 
-Question for the report: do real extra melanomas help where resampling the same
-~400 melanomas (E2) did not?
+Our question: do real extra melanomas help, when showing the same ~400 melanomas more often (E2) did not?
 
-Rules (decided 18 Oct 2026, before any run):
-  - ISIC 2019 is used for training only. Inner validation, the held-out folds and
-    the test set stay pure ISIC 2020, so every number stays comparable with the grid.
-  - Only melanoma (diagnosis MEL) is 1. Everything else, BCC and SCC included, is 0,
-    because the ISIC 2020 target is melanoma vs not melanoma.
-  - Every ISIC 2019 image that duplicates an ISIC 2020 image (dev OR test) is removed
+Our rules, which we set before any run:
+  - We only use ISIC 2019 for training. Inner validation, the held-out folds and the
+    test set stay ISIC 2020, so the numbers can be compared with the grid.
+  - Only melanoma (diagnosis MEL) is 1. Everything else, also BCC and SCC, is 0,
+    because the ISIC 2020 target is melanoma or not melanoma.
+  - We remove every ISIC 2019 image that is a duplicate of an ISIC 2020 image (dev or test)
     before any training run (`build`, run once from notebooks/G10_isic2019_check.ipynb).
 
 Data: Chris Deotte's resized ISIC 2019 on Kaggle (the external data of the ISIC 2020
@@ -21,16 +20,15 @@ author's own duplicate marking), diagnosis "MEL" = melanoma.
 ISIC 2019 challenge data: Tschandl et al. 2018 (HAM10000), Codella et al. 2018,
 Combalia et al. 2019 (BCN20000).
 
-Duplicate check: a perceptual hash (pHash, 64 bits) per image, from the
-`imagehash` library; two images whose hashes differ in at most T bits count as
-duplicates. pHash survives resizing and JPEG re-compression, which a file checksum
-does not. T is calibrated on ISIC 2020's own official duplicate list
-(ISIC_2020_Training_Duplicates.csv, 425 pairs, both copies are on disk):
-T = the distance that covers 99% of those known pairs, but at least 6 bits: the
-ISIC 2019 copy of a photo may come from a differently cropped original, so it can
-sit a few bits further away than ISIC 2020's own copies. A too-strict T could miss
-real duplicates; a too-loose one only removes a few extra training images, so the
-check errs on the loose side. The full distance histogram is saved for the report.
+Duplicate check: each image gets a perceptual hash (pHash, 64 bits) from the `imagehash`
+library. Two images whose hashes differ in at most T bits count as duplicates. pHash
+still works after resizing and JPEG compression, which a file checksum does not.
+We set T using ISIC 2020's own official duplicate list (ISIC_2020_Training_Duplicates.csv,
+425 pairs, both copies are on disk). T is the distance that covers 99% of those known
+pairs, but at least 6 bits, because the ISIC 2019 copy of a photo may come from a
+differently cropped original. If T is too strict we could miss real duplicates. If it is
+too loose we only lose a few extra training images, so we chose the loose side.
+We save the full distance histogram.
   https://github.com/JohannesBuchner/imagehash
   https://challenge2020.isic-archive.com/  (duplicate list under "Data")
 """
@@ -63,6 +61,7 @@ def _phash(path):
     return np.packbits(bits).view(">u8")[0]
 
 
+# hashing is slow so we use all the cpus
 def phash_all(paths, workers=2):
     with Pool(workers) as pool:
         return np.array(pool.map(_phash, list(paths), chunksize=256), dtype=np.uint64)
@@ -91,8 +90,8 @@ def nearest(a, b, same_set=False, chunk=400):
 
 # Written with AI (Claude). Idea from lab 3 (find_train_val_duplicates); we use pHash instead of ResNet features.
 def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
-    """Run once. Writes splits/isic2019_train.csv (the ISIC 2019 images allowed in
-    training), splits/isic2019_duplicates.csv (the ones removed, with their ISIC 2020
+    """We run this once. It saves splits/isic2019_train.csv (the ISIC 2019 images we may
+    train on), splits/isic2019_duplicates.csv (the ones we removed, with their ISIC 2020
     match) and splits/isic2020_near_duplicates.csv (pairs inside our own splits that
     cross a fold or the test set), and returns a summary."""
     splits_dir, root2020 = Path(splits_dir), Path(root2020)
@@ -166,6 +165,7 @@ def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
     return summary
 
 
+# puts the pairs next to each other so we can check them by eye
 def _figure(dup, ours, path, T, n=8):
     """The removed pairs closest to the threshold, side by side, to check by eye
     that they really are the same photo."""
@@ -194,7 +194,7 @@ def _figure(dup, ours, path, T, n=8):
 
 
 def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
-    """For the report: example pairs at each hash distance, ISIC 2019 vs its nearest
+    """Example pairs at each hash distance, ISIC 2019 vs its nearest
     ISIC 2020 image (rows 0, 2, 4, 6 bits), plus near-identical ISIC 2020 pairs that
     cross a fold or the test set (last row, 0 bits). Shows by eye from which distance
     on the pairs are different lesions. pHash sets exactly half of its 64 bits, so
@@ -245,6 +245,7 @@ def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
     plt.close(fig)
 
 
+# only the isic 2019 images that passed the duplicate check
 def load_extra(splits_dir, root2019):
     """The ISIC 2019 training images that passed the duplicate check."""
     kept_csv = Path(splits_dir) / "isic2019_train.csv"

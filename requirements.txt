@@ -1,0 +1,14 @@
+# Most of these are already installed in Google Colab.
+torch
+torchvision
+timm
+numpy
+pandas
+scikit-learn
+matplotlib
+pillow
+requests
+imagehash
+kaggle
+gdown
+libauc==2.0.1
