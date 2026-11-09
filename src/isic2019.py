@@ -1,36 +1,20 @@
-"""Step `isic2019`: we use ISIC 2019 images as extra *training* data.
+"""Step `isic2019`: ISIC 2019 images as extra training data.
 
-Our question: do real extra melanomas help, when showing the same ~400 melanomas more often (E2) did not?
+Our rules:
+  - Training only. Validation, held-out folds and test stay ISIC 2020.
+  - Only melanoma is 1. Everything else is 0.
+  - ISIC 2019 images that are also in ISIC 2020 are removed first.
 
-Our rules, which we set before any run:
-  - We only use ISIC 2019 for training. Inner validation, the held-out folds and the
-    test set stay ISIC 2020, so the numbers can be compared with the grid.
-  - Only melanoma (diagnosis MEL) is 1. Everything else, also BCC and SCC, is 0,
-    because the ISIC 2020 target is melanoma or not melanoma.
-  - We remove every ISIC 2019 image that is a duplicate of an ISIC 2020 image (dev or test)
-    before any training run (`build`, run once from notebooks/G10_isic2019_check.ipynb).
-
-Data: Chris Deotte's resized ISIC 2019 on Kaggle (the external data of the ISIC 2020
-winners), same 256 px format as our ISIC 2020 images.
-  https://www.kaggle.com/datasets/cdeotte/jpeg-isic2019-256x256
-Reading it follows Ha et al.'s `get_df` (dataset.py, MIT licence): train.csv,
-images in train/<image_name>.jpg, rows with tfrecord < 0 dropped (the dataset
-author's own duplicate marking), diagnosis "MEL" = melanoma.
+Data: C. Deotte's resized ISIC 2019: https://www.kaggle.com/datasets/cdeotte/jpeg-isic2019-256x256
+Reading it follows Ha et al.'s `get_df` (dataset.py, MIT):
   https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
-ISIC 2019 challenge data: Tschandl et al. 2018 (HAM10000), Codella et al. 2018,
-Combalia et al. 2019 (BCN20000).
+ISIC 2019: Tschandl et al. 2018, Codella et al. 2018, Combalia et al. 2019.
 
-Duplicate check: each image gets a perceptual hash (pHash, 64 bits) from the `imagehash`
-library. Two images whose hashes differ in at most T bits count as duplicates. pHash
-still works after resizing and JPEG compression, which a file checksum does not.
-We set T using ISIC 2020's own official duplicate list (ISIC_2020_Training_Duplicates.csv,
-425 pairs, both copies are on disk). T is the distance that covers 99% of those known
-pairs, but at least 6 bits, because the ISIC 2019 copy of a photo may come from a
-differently cropped original. If T is too strict we could miss real duplicates. If it is
-too loose we only lose a few extra training images, so we chose the loose side.
-We save the full distance histogram.
+Duplicate check: each image gets a pHash. Images that differ in at most T bits count as duplicates.
+T comes from ISIC 2020's official list of 425 duplicates, but is at least 6 bits.
+We chose the loose side, because it only costs a few training images.
   https://github.com/JohannesBuchner/imagehash
-  https://challenge2020.isic-archive.com/  (duplicate list under "Data")
+  https://challenge2020.isic-archive.com/
 """
 from pathlib import Path
 from multiprocessing import Pool
@@ -46,7 +30,7 @@ _POP = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
 
 
 def load_meta(root2019):
-    """ISIC 2019 rows as in Ha et al.'s get_df, with our binary target."""
+    """ISIC 2019 rows as in Ha et al.'s get_df, with our target."""
     root2019 = Path(root2019)
     df = pd.read_csv(root2019 / "train.csv")
     df = df[df["tfrecord"] >= 0].reset_index(drop=True)
@@ -69,14 +53,13 @@ def phash_all(paths, workers=2):
 
 # _POP, _hamming and nearest were written with AI (Claude).
 def _hamming(a, b):
-    """Bits that differ between every hash in a (n) and every hash in b (m) -> n x m."""
+    """The number of different bits between all hashes in a and b."""
     x = np.bitwise_xor(a[:, None], b[None, :])
     return _POP[x.view(np.uint8)].reshape(len(a), len(b), 8).sum(axis=2, dtype=np.uint8)
 
 
 def nearest(a, b, same_set=False, chunk=400):
-    """For each hash in a: the distance to, and index of, its closest hash in b.
-    same_set=True ignores each image's distance to itself (a and b are the same list)."""
+    """The closest hash in b for each hash in a."""
     dist = np.empty(len(a), dtype=np.uint8)
     idx = np.empty(len(a), dtype=np.int64)
     for s in range(0, len(a), chunk):
@@ -90,10 +73,7 @@ def nearest(a, b, same_set=False, chunk=400):
 
 # Written with AI (Claude). Idea from lab 3 (find_train_val_duplicates); we use pHash instead of ResNet features.
 def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
-    """We run this once. It saves splits/isic2019_train.csv (the ISIC 2019 images we may
-    train on), splits/isic2019_duplicates.csv (the ones we removed, with their ISIC 2020
-    match) and splits/isic2020_near_duplicates.csv (pairs inside our own splits that
-    cross a fold or the test set), and returns a summary."""
+    """We ran this once. Saves the allowed ISIC 2019 images, the removed ones, and near-identical pairs inside our splits."""
     splits_dir, root2020 = Path(splits_dir), Path(root2020)
     dev = pd.read_csv(splits_dir / "dev_split.csv")
     test = pd.read_csv(splits_dir / "test_split.csv")
@@ -167,8 +147,7 @@ def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
 
 # puts the pairs next to each other so we can check them by eye
 def _figure(dup, ours, path, T, n=8):
-    """The removed pairs closest to the threshold, side by side, to check by eye
-    that they really are the same photo."""
+    """The removed pairs closest to the threshold, side by side."""
     import matplotlib.pyplot as plt
     rows = dup.head(n)
     if rows.empty:
@@ -194,11 +173,7 @@ def _figure(dup, ours, path, T, n=8):
 
 
 def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
-    """Example pairs at each hash distance, ISIC 2019 vs its nearest
-    ISIC 2020 image (rows 0, 2, 4, 6 bits), plus near-identical ISIC 2020 pairs that
-    cross a fold or the test set (last row, 0 bits). Shows by eye from which distance
-    on the pairs are different lesions. pHash sets exactly half of its 64 bits, so
-    distances are always even."""
+    """Example pairs at each hash distance."""
     import matplotlib.pyplot as plt
     splits_dir, root2020, root2019 = Path(splits_dir), Path(root2020), Path(root2019)
     dup = pd.read_csv(splits_dir / "isic2019_duplicates.csv")

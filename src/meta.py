@@ -1,22 +1,10 @@
-"""Step `panderm_ft_isic2019_meta`: we give the network patient data (age, sex, body site) next to the image.
+"""Step `panderm_ft_isic2019_meta`: age, sex and body site next to the image.
 
-Adapted from the ISIC 2020 winning solution (Ha et al., 2020, MIT licence):
-  - features: `get_meta_data` in dataset.py (sex male=1 / female=0 / missing=-1,
-    age / 90 with missing = 0, body site one-hot including a "missing" column)
-  - network: `Effnet_Melanoma` in models.py: the metadata go through a small
-    network (512 -> 128, batch norm, Swish, dropout 0.3) and are concatenated with
-    the image features before the final linear layer.
+Adapted from Ha et al. (2020, MIT): `get_meta_data` in dataset.py and `Effnet_Melanoma` in models.py.
   https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution
   https://arxiv.org/abs/2010.05351
-
-We did not use two of Ha et al.'s features: images per patient (`n_images`) and file
-size (`image_size`). Both say how and where an image was taken, not what the lesion looks
-like. ISIC 2019 also has no patient ids, so `n_images` would tell the network which
-dataset an image comes from (ISIC 2019 has about 18% melanomas, ISIC 2020 about 1.8%).
-
-Body sites: ISIC 2020 uses six general sites. ISIC 2019 splits the torso into anterior,
-posterior and lateral. We map those to "torso", so a site never shows which dataset an
-image comes from. Any other unknown site counts as missing (we print these).
+We left out `n_images` and `image_size`, because they show which dataset an image comes from.
+For the same reason, ISIC 2019's torso sites are all called "torso".
 """
 import numpy as np
 import pandas as pd
@@ -31,8 +19,7 @@ META_COLS = (["meta_sex", "meta_age"] + [f"meta_site_{i}" for i in range(len(SIT
 
 
 def add_meta(df, name=""):
-    """A copy of df with the META_COLS columns (float32), from sex, age_approx and
-    anatom_site_general_challenge."""
+    """Adds the metadata columns to a table."""
     out = df.copy()
     out["meta_sex"] = out["sex"].map({"male": 1.0, "female": 0.0}).fillna(-1.0)
     out["meta_age"] = (out["age_approx"] / 90).fillna(0.0)
@@ -51,14 +38,13 @@ def add_meta(df, name=""):
 
 # the isic 2019 patient info is in its own csv
 def meta_2019(root2019):
-    """sex, age_approx and body site of the ISIC 2019 images, from the dataset's train.csv."""
+    """Sex, age and body site of the ISIC 2019 images."""
     df = pd.read_csv(f"{root2019}/train.csv")
     return df[["image_name", "sex", "age_approx", "anatom_site_general_challenge"]]
 
 
 class WithMeta(nn.Module):
-    """Image features + metadata -> one logit (Ha et al.'s Effnet_Melanoma, without
-    their five averaged dropout heads). `backbone` must return a feature vector."""
+    """Image features + metadata give one output. From Ha et al.'s Effnet_Melanoma, without their five dropout heads."""
 
     def __init__(self, backbone, n_features, n_meta=len(META_COLS), dims=(512, 128)):
         super().__init__()

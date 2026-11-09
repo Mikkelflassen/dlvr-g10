@@ -1,16 +1,9 @@
-"""Here we score the locked test set. We ran this once, after the three final runs were done.
+"""Scores the locked test set. We ran this once.
 
-We fixed everything here before we opened the test set (results/test/protocol.md):
-the models, the thresholds (configs/test.json), the metrics and the bootstrap.
-
-Uncertainty: the test set only has about 80 melanomas, so every number gets a 95% confidence
-interval from a bootstrap with 2,000 resamples. We resample *patients*, so all images from
-one patient stay together, as in our splits. For differences between models we use the
-same resample for both models.
+Everything was fixed before we opened the test set (results/test/protocol.md).
+The 95% intervals come from a bootstrap over patients (2,000 resamples).
   Efron & Tibshirani (1993), An Introduction to the Bootstrap.
-  Patient-level (cluster) resampling: Field & Welsh (2007), https://doi.org/10.1111/j.1467-9868.2007.00593.x
-Metrics: scikit-learn average_precision_score (AUPRC) and roc_auc_score;
-ECE from eval.ece.
+  Field & Welsh (2007), https://doi.org/10.1111/j.1467-9868.2007.00593.x
 """
 from pathlib import Path
 import json

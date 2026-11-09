@@ -1,18 +1,10 @@
-"""Here we find out which institution each ISIC 2020 image comes from, and how many
-of our images and melanomas each institution has in the dev and test splits.
+"""Finds the institution of each ISIC 2020 image, and counts images and melanomas per institution.
 
-Why: PanDerm (Yan et al. 2025) was pretrained on the in-house Australian cohorts "MYM"
-(Mind Your Moles) and "HOP" (high-risk sequential dermoscopy). The University of
-Queensland images in ISIC 2020 come from the same kind of studies (Rotemberg et al.
-2021, Sci Data 8:34). So we also want to score PanDerm without the Queensland images.
+PanDerm (Yan et al. 2025) was pretrained on Australian cohorts. The Queensland images in
+ISIC 2020 (Rotemberg et al. 2021, Sci Data 8:34) may come from the same studies.
 
-Data: the ISIC Archive API, collection 70 = "Challenge 2020: Training"
-(33,126 images). Each image record has an `attribution` field.
-  https://api.isic-archive.com/api/docs/v2
-
-Run it from the repo root with  python src/check_institutions.py
-It saves splits/isic2020_attribution.csv (image_name, patient_id, attribution) and prints
-the counts. It needs internet and takes a few minutes (about 330 requests).
+Data: ISIC Archive API, collection 70: https://api.isic-archive.com/api/docs/v2
+Saves splits/isic2020_attribution.csv.
 """
 from pathlib import Path
 import time

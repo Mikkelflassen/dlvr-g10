@@ -1,4 +1,4 @@
-"""Here we choose the loss for each setup. E2 only changes the sampler, so it uses plain BCE."""
+"""The loss for each setup."""
 from functools import partial
 
 import torch
@@ -27,9 +27,7 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
         # Library: torchvision.ops.sigmoid_focal_loss, the focal loss of Lin et al. (2017).
         #   https://arxiv.org/abs/1708.02002
         #   https://github.com/pytorch/vision/blob/main/torchvision/ops/focal_loss.py
-        # gamma is the focusing parameter (gamma=0 is plain BCE). alpha is the class-balance
-        # weight from the paper. We switch it off with -1, so E3 only tests focusing and
-        # does not overlap with the class weighting in E1.
+        # alpha -1 means off, so E3 does not overlap with E1
         # Calibration motivation: Mukhoti et al. (2020), https://arxiv.org/abs/2002.09437
         return partial(sigmoid_focal_loss, alpha=alpha, gamma=gamma, reduction="mean")
     # Based on lecture 2, Code 5 and lecture 3, Code 4.

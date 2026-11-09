@@ -1,15 +1,11 @@
-"""Here we train one run: one setup on one fold. Each run is saved in its own folder.
+"""Trains one run (one setup, one fold) and saves it in its own folder.
 
-We do not calculate any metrics here. They are calculated later from preds.csv in eval.py.
-
-Our training loop is adapted from two sources:
-  [T] PyTorch "Transfer Learning for Computer Vision" tutorial, `train_model`
-      (S. Chilamkurthy, BSD-3-Clause)
+Adapted from:
+  [T] PyTorch "Transfer Learning for Computer Vision" tutorial, `train_model` (S. Chilamkurthy, BSD-3-Clause)
       https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py
   [H] ISIC 2020 winning solution, `train.py` (Ha et al., 2020, MIT)
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/train.py
-The way we worked around it (fixed seed, one change at a time, evaluating on the
-whole validation set) follows A. Karpathy, "A Recipe for Training Neural Networks":
+Our way of working (fixed seed, one change at a time) follows A. Karpathy:
   https://karpathy.github.io/2019/04/25/recipe/
 """
 import json
@@ -52,7 +48,7 @@ def set_seed(seed=0):
 
 # metadata runs have two inputs, the normal runs only images
 def _forward(model, inputs, device):
-    """One forward pass. The input is a batch of images, or [images, metadata] in the metadata step."""
+    """One forward pass."""
     if isinstance(inputs, (list, tuple)):
         return model(*[tensor.to(device, non_blocking=True) for tensor in inputs])
     return model(inputs.to(device, non_blocking=True))
@@ -60,10 +56,9 @@ def _forward(model, inputs, device):
 
 # See also lab 2.
 def val_epoch(model, loader, criterion, device, amp=False):
-    """Adapted from [H] `val_epoch`. We get the loss and the probabilities for all images.
+    """Adapted from [H] `val_epoch`. Returns the loss and the probabilities.
 
-    We changed three things: we use sigmoid on one output instead of softmax, we do not
-    use test-time augmentation, and we average the loss per image instead of per batch.
+    Changes: sigmoid instead of softmax, no test-time augmentation, loss per image.
     """
     model.eval()
     val_loss = 0.0
@@ -86,7 +81,7 @@ def val_epoch(model, loader, criterion, device, amp=False):
 
 # we only need the probabilities here
 def predict(model, loader, device, amp=False):
-    """Only the probabilities. It is the same loop as `val_epoch`, without the loss."""
+    """Only the probabilities."""
     model.eval()
     PROBS = []
     with torch.no_grad():
@@ -103,18 +98,13 @@ def predict(model, loader, device, amp=False):
 # https://github.com/Optimization-AI/LibAUC/blob/main/examples/02_v140_Optimizing_AUROC_with_ResNet20_on_Imbalanced_CIFAR10.ipynb
 def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader, train_check,
               device, history, since):
-    """Setup E6, stage 2: we fine-tune the stage 1 network (plain BCE) with the AUC-margin loss.
+    """E6, stage 2: fine-tune the plain BCE network with the AUC-margin loss.
 
-    Deep AUC maximisation, Yuan et al. (ICCV 2021), https://arxiv.org/abs/2012.03173,
-    with the LibAUC library (https://libauc.org, https://github.com/Optimization-AI/LibAUC).
-    First the network is trained with cross-entropy (stage 1, which is our E0). Then we
-    reset the final layer and train the whole network with AUCMLoss and the PESG optimizer.
-    AUCMLoss works on pairs of classes through running statistics (a, b, alpha), so it does
-    not need a special sampler. We set p to the share of melanomas in the whole training
-    set (imratio, auto=False) instead of per batch.
-    We use LibAUC's default settings and tutorial schedule: lr 0.1, margin 1.0,
-    epoch_decay 0.002, weight_decay 1e-5, and the learning rate divided by 10 halfway.
-    The best epoch is the one with the highest inner-validation AUROC in stage 2, as in every run.
+    Yuan et al. (ICCV 2021), https://arxiv.org/abs/2012.03173
+    LibAUC: https://libauc.org, https://github.com/Optimization-AI/LibAUC
+    We reset the last layer and train with AUCMLoss and PESG.
+    LibAUC's default settings: lr 0.1, margin 1.0, epoch_decay 0.002, weight_decay 1e-5.
+    The learning rate is divided by 10 halfway.
     """
     import warnings
     from libauc.losses import AUCMLoss
@@ -168,13 +158,9 @@ def auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
 
 # The setup code here was written with AI (Claude). Borrowed parts name their source below.
 def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoch_hook=None):
-    """Trains one run and saves it in its own folder.
+    """Trains one run. cfg holds the settings (arm, depth, fold, seed, epochs and so on).
 
-    The settings in cfg: arm, depth, fold, seed, epochs, batch_size,
-    pos_weight (E1), gamma / alpha (E3), balanced / mal_frac / sampling (E2), augment, aug, lr, tag
-
-    `tag` is added to the run folder name, so we can run the same arm, fold and seed
-    with different settings without overwriting earlier runs.
+    `tag` is added to the folder name, so test runs do not overwrite each other.
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     cfg = dict(cfg)
@@ -184,8 +170,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     cfg.setdefault("batch_size", 64)
     cfg.setdefault("lr", default_lr(cfg["depth"]))
     cfg.setdefault("augment", True)
-    # We chose the augmentation step "light" after testing the steps on inner validation.
-    # See make_transform in data.py.
+    # "light" won our augmentation test (see data.py)
     cfg.setdefault("aug", "light")
     # Settings for the extension. The defaults are what the grid used.
     cfg.setdefault("img_size", 256)
@@ -200,7 +185,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         cfg.setdefault("drop_path", 0.2)
         cfg.setdefault("warmup_epochs", 1)
         cfg.setdefault("min_lr", 1e-6)
-    # We only use mixed precision for PanDerm, because a ViT-B would take too long without it.
+    # mixed precision only for panderm, otherwise it takes too long
     cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
     if cfg["arm"] == "E6":
@@ -237,8 +222,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     set_seed(cfg["seed"])
 
-    # final=True is for the test set. We train on all dev images with no inner validation,
-    # keep the last epoch and predict the locked test set. See results/test/protocol.md.
+    # final=True: train on all dev images and predict the test set (results/test/protocol.md)
     final = bool(cfg.get("final"))
     name = (f"{cfg['arm']}_{cfg['depth']}_final_s{cfg['seed']}" if final
             else f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}")
@@ -255,8 +239,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         tr, inner_val = inner_split(dev, cfg["fold"], splits_dir)
         held = dev[dev.fold == cfg["fold"]].reset_index(drop=True)
     tr_2020 = tr
-    # Step `isic2019`: we only add extra training images. Inner validation and the held-out
-    # fold stay ISIC 2020, so the numbers can be compared with the grid.
+    # isic 2019 images only go into training
     if cfg.get("extra_train") == "isic2019":
         from isic2019 import load_extra
         ext = load_extra(splits_dir, cfg["extra_root"])
@@ -285,11 +268,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
                                mal_frac=cfg.get("mal_frac", 0.5), size=cfg["img_size"])
     val_loader = None if inner_val is None else make_loader(inner_val, cfg["batch_size"], workers=cfg["workers"], size=cfg["img_size"],
                              meta_cols=meta_cols)
-    # We score a fixed sample of training images each epoch, without augmentation. It has
-    # the same size as inner validation. Comparing the two shows the real gap between
-    # training and validation. (train_loss is measured on augmented images, so it goes up
-    # with heavier augmentation.) We only draw from the ISIC 2020 training images, so the
-    # numbers can still be compared when we add ISIC 2019.
+    # a fixed sample of clean training images, to compare with inner validation
     n_check = 4500 if inner_val is None else len(inner_val)
     train_check = tr_2020.sample(n=min(n_check, len(tr_2020)),
                             random_state=cfg["seed"]).reset_index(drop=True)
@@ -339,16 +318,13 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
     since = time.time()
 
     # See also lecture 2, Code 1 and lab 2 (training loop), and lecture 6, Code 7 (saving the best epoch).
-    # Training loop adapted from [T] `train_model`: a temporary checkpoint holds the
-    # best epoch, and we load it again at the end. We choose the best epoch by validation
-    # AUROC as in [H] (`if auc > auc_max: torch.save(...)`). We do not use accuracy as in
-    # [T], and we do not use the loss, because it cannot be compared across arms.
+    # Adapted from [T] `train_model`. We keep the epoch with the best validation AUROC, as in [H].
     #
     # The resume code was written with AI (Claude). Based on lab 6 (save_checkpoint).
     # resume_dir is for the long runs: we save everything after each epoch,
     # so if colab stops we only lose that epoch
     # https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html
-    # epoch_hook(out, epoch): called after every epoch, e.g. to push history.csv.
+    # epoch_hook: pushes history.csv after every epoch
     with TemporaryDirectory() as tempdir:
         state_path = None
         if resume_dir:
@@ -469,8 +445,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         best_auc = auc_stage(model, cfg, tr, train_loader, val_loader, inner_val, check_loader,
                              train_check, device, history, since)
 
-    # We save the prediction for each image, so we can calculate every metric later.
-    # [H] `evaluate.py` does the same with its out-of-fold prediction files.
+    # one prediction per image, as in [H] `evaluate.py`
     if final:
         preds = pd.DataFrame({"image_name": held.image_name, "target": held.target,
                               "prob": predict(model, held_loader, device, cfg["amp"]), "split": "test"})

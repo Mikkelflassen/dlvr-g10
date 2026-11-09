@@ -1,8 +1,7 @@
-"""Our dataset and data loaders. We read the saved split files and never make the splits again.
+"""Our dataset and data loaders. The splits are read from files.
 
-Data: ISIC 2020 (Rotemberg et al., 2021, https://doi.org/10.1038/s41597-021-00815-z)
-in Chris Deotte's 256x256 JPEG version,
-https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-256x256
+Data: ISIC 2020 (Rotemberg et al., 2021, https://doi.org/10.1038/s41597-021-00815-z),
+256x256 version by Chris Deotte: https://www.kaggle.com/datasets/cdeotte/jpeg-melanoma-256x256
 """
 from pathlib import Path
 import numpy as np
@@ -20,7 +19,7 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 # reads our fixed splits and adds where each image is
 def load_splits(splits_dir, data_root):
-    """Reads the dev set (folds 0-4) and the test set, and adds the path of each image."""
+    """Reads the dev and test sets and adds the path of each image."""
     splits_dir, data_root = Path(splits_dir), Path(data_root)
     out = []
     for name in ("dev_split.csv", "test_split.csv"):
@@ -32,13 +31,9 @@ def load_splits(splits_dir, data_root):
 
 # Train, validation and test sets: see lecture 2, section 3.
 def inner_split(dev, test_fold, splits_dir):
-    """Splits the training folds into train and inner validation, using splits/inner_split.csv.
+    """Splits the training folds into train and inner validation (splits/inner_split.csv).
 
-    Inner validation is 20% of the training folds, grouped by patient and stratified by
-    target. We use it to choose the best epoch, the threshold and the settings of a setup.
-    The held-out fold is not used for these choices. The split is saved in a file, so it is
-    the same for every seed. How we made it is in make_inner_split.py.
-
+    Inner validation chooses the best epoch, the threshold and the settings.
     Why these choices need their own split: Cawley & Talbot (2010),
       https://jmlr.org/papers/v11/cawley10a.html
     """
@@ -57,46 +52,32 @@ AUG_STEPS = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
 
 
 def _transpose(img):
-    """Swap rows and columns (a flip along the diagonal)."""
+    """Flips the image along the diagonal."""
     return img.transpose(Image.TRANSPOSE)
 
 
 # Converted from albumentations to torchvision with AI (Claude).
 # See also lecture 6, Code 3.
 def make_transform(train, augment=False, aug="base", size=256):
-    """All our training augmentation is defined here.
+    """Training augmentation. Validation and test images are not augmented.
 
-    We only augment training images. Validation and test images are never augmented.
-
-    `aug` picks a step on a ladder. Each step adds one group to the step before:
-      none    nothing                             the control: what augmentation adds at all
-      base    crop + flips                        what a lesion looks like at other scales
-      geo     + transpose, shift / scale / rotate a lesion has no "up"
-      light   + brightness, contrast              cameras and lighting differ
-      colour  + hue, saturation                   tests whether colour should be left alone:
-                                                  colour variegation is diagnostic for melanoma,
-                                                  so a colour shift may contradict the label
-      cutout  + one erased square                 hair, rulers and ink cover parts of a lesion
-      randaug base + RandAugment instead of geo..cutout: a generic automatic policy
-              (2 random operations per image from a fixed list of 14, one shared
-              strength), as a contrast to the hand-picked steps above.
-              Cubuk et al. (2020), https://arxiv.org/abs/1909.13719
+    `aug` picks a step. Each step adds to the one before:
+      none    nothing
+      base    crop + flips
+      geo     + transpose, shift / scale / rotate
+      light   + brightness, contrast (the one we used)
+      colour  + hue, saturation
+      cutout  + one erased square. DeVries & Taylor (2017), https://arxiv.org/abs/1708.04552
+      randaug base + RandAugment. Cubuk et al. (2020), https://arxiv.org/abs/1909.13719
               https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.RandAugment.html
-              Note: about half of its operations change colour strongly (Solarize,
-              Posterize, Equalize, AutoContrast, Color).
 
-    base is adapted from `data_transforms` in the PyTorch transfer learning tutorial
-    (BSD-3-Clause): RandomResizedCrop + RandomHorizontalFlip + ToTensor + Normalize.
+    base is adapted from `data_transforms` in the PyTorch transfer learning tutorial (BSD-3-Clause):
       https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py
-    Every other step takes its operations, strengths and probabilities from
-    `get_transforms` in the ISIC 2020 winning solution (Ha et al., 2020, MIT):
+    The other steps use the operations and strengths of `get_transforms` in Ha et al. (2020, MIT):
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
       https://arxiv.org/abs/2010.05351
-    They use albumentations and we use the torchvision versions, so it is close but
-    not exact (we note this per line). We did not use these from their list: blur / noise,
-    optical / grid / elastic distortion and CLAHE.
+    They use albumentations and we use torchvision, so it is close but not exact.
       https://docs.pytorch.org/vision/stable/transforms.html
-    Cutout: DeVries & Taylor (2017), https://arxiv.org/abs/1708.04552
     """
     if aug not in AUG_STEPS:
         raise ValueError(f"aug must be one of {AUG_STEPS}, got {aug!r}")
@@ -149,10 +130,7 @@ def make_transform(train, augment=False, aug="base", size=256):
                 # One black square with side 0.375 of the image = 14% of its area.
                 transforms.RandomErasing(p=0.7, scale=(0.14, 0.14), ratio=(1.0, 1.0), value=0),
             ]
-    # Images are already stored at the model's size (Chris Deotte's resized datasets),
-    # except for PanDerm (224 px input from the 256 px images): without augmentation
-    # the image is centre-cropped to `size`, as in PanDerm's own evaluation transform.
-    # On an image that already has this size the crop changes nothing.
+    # panderm needs 224 px from our 256 px images, so we crop the centre, as PanDerm does
     if not before:
         before = [transforms.CenterCrop(size)]
     return transforms.Compose(before + [transforms.ToTensor()] + after
@@ -161,10 +139,9 @@ def make_transform(train, augment=False, aug="base", size=256):
 
 # See also lab 3 (ImageDatasetFromCSV).
 class ISICDataset(Dataset):
-    """Adapted from `MelanomaDataset` in the ISIC 2020 winning solution (Ha et al., MIT):
+    """Adapted from `MelanomaDataset` in Ha et al. (MIT):
       https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
-    Changes: PIL + torchvision transforms instead of cv2 + albumentations, no
-    metadata branch, float target for a single-logit BCE output.
+    Changes: PIL and torchvision instead of cv2 and albumentations, float target.
     """
 
     def __init__(self, csv, transform=None, meta_cols=None):
@@ -189,10 +166,7 @@ class ISICDataset(Dataset):
 
 
 def sampling_weights(target, mal_frac):
-    """Per-image sampling weights so that a share `mal_frac` of the images drawn is
-    malignant on average. Adapted from ptrblck (see make_loader): weight = wanted
-    share of the class / number of images in it. With mal_frac = 0.5 this is his
-    1 / class count (times 0.5, which the sampler normalises away), so 50/50 sampling."""
+    """Weights so that a share `mal_frac` of the images drawn is malignant. Adapted from ptrblck (see make_loader)."""
     target = np.asarray(target).astype(int)
     class_sample_count = np.array(
         [len(np.where(target == t)[0]) for t in np.unique(target)])
@@ -204,8 +178,7 @@ def sampling_weights(target, mal_frac):
 # E2 and E5 get the sampler, everything else just shuffles
 def make_loader(df, batch_size=64, train=False, augment=False,
                 balanced=False, workers=2, aug="base", mal_frac=0.5, size=256, meta_cols=None):
-    """balanced=True is E2: oversample malignant so that on average a share
-    `mal_frac` of the training images drawn is malignant (0.5 = 50/50)."""
+    """balanced=True is E2: we draw more malignant images."""
     ds = ISICDataset(df, make_transform(train, augment, aug, size), meta_cols)
     if train and balanced:
         # Adapted from ptrblck's answer in the PyTorch forum thread
@@ -216,10 +189,9 @@ def make_loader(df, batch_size=64, train=False, augment=False,
         sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
         return DataLoader(ds, batch_size=batch_size, sampler=sampler,
                           num_workers=workers, pin_memory=True)
-    # Evaluation loaders get their own random generator, so that evaluating (which
-    # starts worker processes) never draws from the global RNG that training uses.
+    # own random generator, so evaluating does not change the training
     # https://docs.pytorch.org/docs/stable/notes/randomness.html#dataloader
-    # drop_last only with metadata: its batch norm cannot train on a last batch of 1 image.
+    # batch norm fails on a last batch of 1 image
     return DataLoader(ds, batch_size=batch_size, shuffle=train,
                       num_workers=workers, pin_memory=True,
                       drop_last=train and meta_cols is not None,
