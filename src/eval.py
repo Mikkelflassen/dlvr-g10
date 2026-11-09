@@ -3,7 +3,6 @@
 Metrics are scikit-learn functions:
   https://scikit-learn.org/stable/modules/model_evaluation.html
 """
-# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 import json
 from pathlib import Path
 
@@ -41,7 +40,7 @@ def ece(y, p, n_bins=15):
     return float(ece)
 
 
-# Course: the F1 formula and the precision-recall trade-off are in [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, sections 5 and 7.
+# F1 and the precision-recall trade-off: see the bonus lecture (week 4), sections 5 and 7.
 def best_threshold(y, p):
     """The threshold with the highest F1. Tuned on inner_val ONLY — tuning it on
     the held fold would break the comparison.
@@ -57,7 +56,7 @@ def best_threshold(y, p):
     return float(thresholds[int(np.argmax(f1))])
 
 
-# AI declaration: this function was written with Claude.
+# Written with AI (Claude).
 def false_alarms_to_find(y, p, share):
     """Lower the threshold until `share` of the malignant images are called
     malignant, and count the benign images called malignant at that point.
@@ -69,8 +68,7 @@ def false_alarms_to_find(y, p, share):
     return int(((p >= t) & (y == 0)).sum())
 
 
-# Course: confusion_matrix is used in [C]/labs/Lab2_TransferLearning.ipynb; precision and recall are in
-# [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, section 4.
+# Based on lab 2 (confusion_matrix) and the bonus lecture (week 4), section 4.
 def counts(y, yhat):
     """The four outcome counts and the percentages read off them.
 
@@ -95,7 +93,7 @@ def counts(y, yhat):
     }
 
 
-# Course: precision-recall curves and AP (we call it AUPRC) are in [C]/lecture_notes/bonus_lecture_week4_evaluation_metrics_notes.md, sections 6 and 7.
+# AP (we call it AUPRC): see the bonus lecture (week 4), sections 6 and 7.
 def score_run(run_dir, threshold=0.5):
     """One run -> one row of metrics on the held-out fold.
 
@@ -139,13 +137,18 @@ def build_results(runs_dir, out_csv=None, tuned_all=False):
     (E1b, E2b, E3b), so all arms can also be compared at their own best cut.
     """
     rows = []
-    for d in sorted(Path(runs_dir).iterdir()):
-        if not (d / "preds.csv").exists():
+    for run_dir in sorted(Path(runs_dir).iterdir()):
+        if not (run_dir / "preds.csv").exists():
             continue
-        row = score_run(d) | {"cut": "0.5"}
+
+        row = score_run(run_dir) | {"cut": "0.5"}
         rows.append(row)
+
         if row["arm"] == "E0" or tuned_all:
-            rows.append(score_run(d, threshold="tuned") | {"arm": row["arm"] + "b", "cut": "tuned"})
+            rows.append(
+                score_run(run_dir, threshold="tuned") | {"arm": row["arm"] + "b", "cut": "tuned"}
+            )
+
     df = pd.DataFrame(rows)
     if out_csv:
         df.to_csv(out_csv, index=False)
@@ -154,18 +157,24 @@ def build_results(runs_dir, out_csv=None, tuned_all=False):
 
 def summarise(results):
     """Mean +/- std across folds, per arm x depth — the headline table."""
-    return (results.groupby(["arm", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
-            .agg(["mean", "std"]).round(4))
+    return (
+        results
+        .groupby(["arm", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
+        .agg(["mean", "std"])
+        .round(4)
+    )
 
 
 def e0b(runs_dir, depth, fold, seed=0):
     """E0b: E0's model with the threshold tuned on inner_val instead of 0.5. No training."""
-    return score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}",
-                     threshold="tuned") | {"arm": "E0b"}
+    return (
+        score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}", threshold="tuned")
+        | {"arm": "E0b"}
+    )
 
 
 
-# AI declaration: this function was written with Claude.
+# Written with AI (Claude).
 def tuning_summary(folder, out_name="summary.md"):
     """One small table per tuning folder, written to <folder>/summary.md.
 
@@ -246,54 +255,82 @@ def tuning_summary(folder, out_name="summary.md"):
 
 def _paired(results, depth, a, b, metric="auprc"):
     """Per-fold metric of arm a and arm b at one depth, folds both have."""
-    r = results[(results.cut == "0.5") & (results.depth == depth)]
-    x = r[r.arm == a].set_index("fold")[metric]
-    y = r[r.arm == b].set_index("fold")[metric]
-    folds = sorted(set(x.index) & set(y.index))
-    return x.loc[folds], y.loc[folds]
+    rows = results[(results.cut == "0.5") & (results.depth == depth)]
+    scores_a = rows[rows.arm == a].set_index("fold")[metric]
+    scores_b = rows[rows.arm == b].set_index("fold")[metric]
+    folds = sorted(set(scores_a.index) & set(scores_b.index))
+    return scores_a.loc[folds], scores_b.loc[folds]
 
 
 def trick_helps(results, arm, depth, min_wins=4):
     """A trick "helps" if its mean AUPRC is above E0's AND it is higher than E0
     in at least `min_wins` of the folds (4 of 5 in the workflow)."""
-    x, e0 = _paired(results, depth, arm, "E0")
-    wins = int((x > e0).sum())
-    if len(x) == 0:
+    trick, baseline = _paired(results, depth, arm, "E0")
+    wins = int((trick > baseline).sum())
+
+    if len(trick) == 0:
         return {"arm": arm, "depth": depth, "folds": 0, "helps": "no shared folds yet"}
-    return {"arm": arm, "depth": depth, "folds": len(x),
-            "auprc": x.mean(), "auprc_E0": e0.mean(), "gap": (x - e0).mean(),
-            "wins": wins, "helps": bool(x.mean() > e0.mean() and wins >= min_wins)}
+
+    return {
+        "arm": arm,
+        "depth": depth,
+        "folds": len(trick),
+        "auprc": trick.mean(),
+        "auprc_E0": baseline.mean(),
+        "gap": (trick - baseline).mean(),
+        "wins": wins,
+        "helps": bool(trick.mean() > baseline.mean() and wins >= min_wins),
+    }
 
 
 def e1_vs_e2(results, depth, tie=0.01):
     """E1 vs E2 by mean AUPRC; within `tie` of each other -> lower mean ECE wins.
     The workflow says "near tie" without a number; 0.01 AUPRC is our choice."""
-    a, b = _paired(results, depth, "E1", "E2")
-    ea, eb = _paired(results, depth, "E1", "E2", "ece")
-    diff = a.mean() - b.mean()
-    if len(a) == 0:
+    auprc_e1, auprc_e2 = _paired(results, depth, "E1", "E2")
+    ece_e1, ece_e2 = _paired(results, depth, "E1", "E2", "ece")
+    diff = auprc_e1.mean() - auprc_e2.mean()
+
+    if len(auprc_e1) == 0:
         return {"depth": depth, "folds": 0, "winner": "no shared folds yet"}
+
     if abs(diff) < tie:
-        winner, why = ("E1" if ea.mean() < eb.mean() else "E2"), "near tie, lower ECE"
+        winner, why = ("E1" if ece_e1.mean() < ece_e2.mean() else "E2"), "near tie, lower ECE"
     else:
         winner, why = ("E1" if diff > 0 else "E2"), "higher AUPRC"
-    return {"depth": depth, "folds": len(a), "auprc_E1": a.mean(), "auprc_E2": b.mean(),
-            "ece_E1": ea.mean(), "ece_E2": eb.mean(), "winner": winner, "why": why}
+
+    return {
+        "depth": depth,
+        "folds": len(auprc_e1),
+        "auprc_E1": auprc_e1.mean(),
+        "auprc_E2": auprc_e2.mean(),
+        "ece_E1": ece_e1.mean(),
+        "ece_E2": ece_e2.mean(),
+        "winner": winner,
+        "why": why,
+    }
 
 
 def depth_choice(results, arm):
     """Higher mean AUPRC wins; if the gap is within the fold-to-fold spread
     (the larger of the two standard deviations), frozen wins as the simpler one."""
-    r = results[(results.cut == "0.5") & (results.arm == arm)]
-    full, frozen = r[r.depth == "full"].auprc, r[r.depth == "frozen"].auprc
+    rows = results[(results.cut == "0.5") & (results.arm == arm)]
+    full, frozen = rows[rows.depth == "full"].auprc, rows[rows.depth == "frozen"].auprc
     spread = max(full.std(), frozen.std())
     gap = full.mean() - frozen.mean()
+
     if len(full) < 2 or len(frozen) < 2:
         winner = "need 2+ folds per depth"
     else:
         winner = "full" if gap > spread else "frozen"
-    return {"arm": arm, "auprc_full": full.mean(), "auprc_frozen": frozen.mean(),
-            "gap": gap, "spread": spread, "winner": winner}
+
+    return {
+        "arm": arm,
+        "auprc_full": full.mean(),
+        "auprc_frozen": frozen.mean(),
+        "gap": gap,
+        "spread": spread,
+        "winner": winner,
+    }
 
 
 # Kang et al. (2020): https://arxiv.org/abs/1910.09217

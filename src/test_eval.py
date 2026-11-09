@@ -25,11 +25,18 @@ N_BOOT = 2000
 
 
 def _metrics(y, p, t):
-    c = counts(y, (p >= t).astype(int))
-    return {"auprc": average_precision_score(y, p), "auroc": roc_auc_score(y, p), "ece": ece(y, p),
-            "found": c["found"], "malignant": c["found"] + c["missed"], "false_alarms": c["false_alarms"],
-            "malignant_accuracy": c["malignant_accuracy"], "benign_accuracy": c["benign_accuracy"],
-            "malignant_calls_right": c["malignant_calls_right"]}
+    outcome = counts(y, (p >= t).astype(int))
+    return {
+        "auprc": average_precision_score(y, p),
+        "auroc": roc_auc_score(y, p),
+        "ece": ece(y, p),
+        "found": outcome["found"],
+        "malignant": outcome["found"] + outcome["missed"],
+        "false_alarms": outcome["false_alarms"],
+        "malignant_accuracy": outcome["malignant_accuracy"],
+        "benign_accuracy": outcome["benign_accuracy"],
+        "malignant_calls_right": outcome["malignant_calls_right"],
+    }
 
 
 def evaluate(repo, out_dir=None, seed=0):
@@ -53,7 +60,7 @@ def evaluate(repo, out_dir=None, seed=0):
     for name in probs:
         rows[name]["auprc_without_qld_sydney"] = average_precision_score(y[~aus], probs[name][~aus])
 
-    # AI declaration: the bootstrap below was written with Claude, following the references at the top.
+    # The bootstrap was written with AI (Claude), following the references at the top.
     # patient bootstrap
     rng = np.random.default_rng(seed)
     patients = test.patient_id.values
@@ -89,18 +96,29 @@ def evaluate(repo, out_dir=None, seed=0):
     return result
 
 
-def _markdown(r):
-    lines = [f"# Test set (opened once) — {r['n_images']} images, {r['n_melanomas']} melanomas, "
-             f"{r['n_patients']} patients\n",
-             "| Model | AUPRC [95% CI] | AUROC [95% CI] | Found / malignant | False alarms | ECE | "
-             "AUPRC w/o Queensland+Sydney |", "|---|---|---|---|---|---|---|"]
-    for n, m in r["models"].items():
-        lines.append(f"| {n} | {m['auprc']:.3f} [{m['auprc_ci95'][0]:.3f}, {m['auprc_ci95'][1]:.3f}] | "
-                     f"{m['auroc']:.3f} [{m['auroc_ci95'][0]:.3f}, {m['auroc_ci95'][1]:.3f}] | "
-                     f"{m['found']} / {m['malignant']} | {m['false_alarms']} | {m['ece']:.3f} | "
-                     f"{m['auprc_without_qld_sydney']:.3f} |")
+def _markdown(result):
+    lines = [
+        f"# Test set (opened once) — {result['n_images']} images, {result['n_melanomas']} melanomas, "
+        f"{result['n_patients']} patients\n",
+        "| Model | AUPRC [95% CI] | AUROC [95% CI] | Found / malignant | False alarms | ECE | "
+        "AUPRC w/o Queensland+Sydney |",
+        "|---|---|---|---|---|---|---|",
+    ]
+
+    for name, model in result["models"].items():
+        lines.append(
+            f"| {name} | {model['auprc']:.3f} [{model['auprc_ci95'][0]:.3f}, {model['auprc_ci95'][1]:.3f}] | "
+            f"{model['auroc']:.3f} [{model['auroc_ci95'][0]:.3f}, {model['auroc_ci95'][1]:.3f}] | "
+            f"{model['found']} / {model['malignant']} | {model['false_alarms']} | {model['ece']:.3f} | "
+            f"{model['auprc_without_qld_sydney']:.3f} |"
+        )
+
     lines += ["", "| Difference | Value [95% CI] | Resamples above 0 |", "|---|---|---|"]
-    for n, d in r["differences"].items():
-        lines.append(f"| {n} | {d['diff']:+.3f} [{d['ci95'][0]:+.3f}, {d['ci95'][1]:+.3f}] | "
-                     f"{100 * d['share_of_resamples_above_0']:.0f}% |")
+
+    for name, diff in result["differences"].items():
+        lines.append(
+            f"| {name} | {diff['diff']:+.3f} [{diff['ci95'][0]:+.3f}, {diff['ci95'][1]:+.3f}] | "
+            f"{100 * diff['share_of_resamples_above_0']:.0f}% |"
+        )
+
     return "\n".join(lines) + "\n"

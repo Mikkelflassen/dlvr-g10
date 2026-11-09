@@ -34,7 +34,6 @@ check errs on the loose side. The full distance histogram is saved for the repor
   https://github.com/JohannesBuchner/imagehash
   https://challenge2020.isic-archive.com/  (duplicate list under "Data")
 """
-# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 from pathlib import Path
 from multiprocessing import Pool
 import json
@@ -69,7 +68,7 @@ def phash_all(paths, workers=2):
         return np.array(pool.map(_phash, list(paths), chunksize=256), dtype=np.uint64)
 
 
-# AI declaration: the fast Hamming distance code (_POP, _hamming, nearest) was written with Claude.
+# _POP, _hamming and nearest were written with AI (Claude).
 def _hamming(a, b):
     """Bits that differ between every hash in a (n) and every hash in b (m) -> n x m."""
     x = np.bitwise_xor(a[:, None], b[None, :])
@@ -90,9 +89,7 @@ def nearest(a, b, same_set=False, chunk=400):
     return dist, idx
 
 
-# AI declaration: this function was written with Claude.
-# Course: the idea of checking train and validation for duplicates is in [C]/labs/Lab3_DataLoading.ipynb
-# (find_train_val_duplicates). That lab compares ResNet features; we compare pHash values instead.
+# Written with AI (Claude). Idea from lab 3 (find_train_val_duplicates); we use pHash instead of ResNet features.
 def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
     """Run once. Writes splits/isic2019_train.csv (the ISIC 2019 images allowed in
     training), splits/isic2019_duplicates.csv (the ones removed, with their ISIC 2020
@@ -177,13 +174,19 @@ def _figure(dup, ours, path, T, n=8):
     if rows.empty:
         return
     where = dict(zip(ours.image_name, ours.path))
-    fig, ax = plt.subplots(2, len(rows), figsize=(2 * len(rows), 4.4))
-    ax = np.atleast_2d(ax).reshape(2, -1)
-    for c, (_, r) in enumerate(rows.iterrows()):
-        ax[0, c].imshow(Image.open(r.path)); ax[0, c].set_title(f"2019 {r.image_name[5:]}", fontsize=7)
-        ax[1, c].imshow(Image.open(where[r.nearest_2020])); ax[1, c].set_title(f"2020 d={r.distance}", fontsize=7)
-    for a in ax.flat:
-        a.axis("off")
+    fig, axes = plt.subplots(2, len(rows), figsize=(2 * len(rows), 4.4))
+    axes = np.atleast_2d(axes).reshape(2, -1)
+
+    for column, (_, row) in enumerate(rows.iterrows()):
+        axes[0, column].imshow(Image.open(row.path))
+        axes[0, column].set_title(f"2019 {row.image_name[5:]}", fontsize=7)
+
+        axes[1, column].imshow(Image.open(where[row.nearest_2020]))
+        axes[1, column].set_title(f"2020 d={row.distance}", fontsize=7)
+
+    for axis in axes.flat:
+        axis.axis("off")
+
     fig.suptitle(f"Removed ISIC 2019 images closest to the threshold (T = {T} bits)", fontsize=9)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
@@ -200,19 +203,43 @@ def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
     splits_dir, root2020, root2019 = Path(splits_dir), Path(root2020), Path(root2019)
     dup = pd.read_csv(splits_dir / "isic2019_duplicates.csv")
     near = pd.read_csv(splits_dir / "isic2020_near_duplicates.csv")
-    rows = [(f"2019 vs 2020, d={d}", dup[dup.distance == d].head(per_distance),
-             lambda r: (root2019 / "train" / f"{r.image_name}.jpg", root2020 / "train" / f"{r.nearest_2020}.jpg"))
-            for d in (0, 2, 4, 6)]
-    rows.append(("2020 vs 2020 across splits, d=0", near[near.distance == 0].head(per_distance),
-                 lambda r: (root2020 / "train" / f"{r.image_name}.jpg", root2020 / "train" / f"{r.other}.jpg")))
-    fig, ax = plt.subplots(len(rows), 2 * per_distance, figsize=(2 * per_distance * 1.1, len(rows) * 1.35))
-    for i, (title, df, paths) in enumerate(rows):
-        ax[i, 0].set_title(title, fontsize=8, loc="left")
-        for c, (_, r) in enumerate(df.iterrows()):
-            a, b = paths(r)
-            ax[i, 2 * c].imshow(Image.open(a)); ax[i, 2 * c + 1].imshow(Image.open(b))
-    for a in ax.flat:
+    rows = [
+        (
+            f"2019 vs 2020, d={distance}",
+            dup[dup.distance == distance].head(per_distance),
+            lambda row: (
+                root2019 / "train" / f"{row.image_name}.jpg",
+                root2020 / "train" / f"{row.nearest_2020}.jpg",
+            ),
+        )
+        for distance in (0, 2, 4, 6)
+    ]
+    rows.append((
+        "2020 vs 2020 across splits, d=0",
+        near[near.distance == 0].head(per_distance),
+        lambda row: (
+            root2020 / "train" / f"{row.image_name}.jpg",
+            root2020 / "train" / f"{row.other}.jpg",
+        ),
+    ))
+
+    fig, axes = plt.subplots(
+        len(rows),
+        2 * per_distance,
+        figsize=(2 * per_distance * 1.1, len(rows) * 1.35),
+    )
+
+    for row_nr, (title, df, paths) in enumerate(rows):
+        axes[row_nr, 0].set_title(title, fontsize=8, loc="left")
+
+        for column, (_, row) in enumerate(df.iterrows()):
+            a, b = paths(row)
+            axes[row_nr, 2 * column].imshow(Image.open(a))
+            axes[row_nr, 2 * column + 1].imshow(Image.open(b))
+
+    for a in axes.flat:
         a.axis("off")
+
     fig.tight_layout()
     fig.savefig(path, dpi=100)
     plt.close(fig)

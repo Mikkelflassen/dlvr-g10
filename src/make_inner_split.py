@@ -32,12 +32,14 @@ dev = pd.read_csv(root / "splits" / "dev_split.csv")
 
 parts = []
 for test_fold in range(5):
-    trn = dev[dev.fold != test_fold].reset_index(drop=True)
-    sgkf = StratifiedGroupKFold(n_splits=round(1 / VAL_FRAC), shuffle=True, random_state=SEED)
-    _, val_idx = next(sgkf.split(trn, trn.target, groups=trn.patient_id))
-    val = trn.iloc[val_idx][["image_name", "patient_id", "target"]].copy()
-    val.insert(0, "test_fold", test_fold)
-    parts.append(val)
+    train_folds = dev[dev.fold != test_fold].reset_index(drop=True)
+
+    splitter = StratifiedGroupKFold(n_splits=round(1 / VAL_FRAC), shuffle=True, random_state=SEED)
+    _, val_idx = next(splitter.split(train_folds, train_folds.target, groups=train_folds.patient_id))
+
+    inner_val = train_folds.iloc[val_idx][["image_name", "patient_id", "target"]].copy()
+    inner_val.insert(0, "test_fold", test_fold)
+    parts.append(inner_val)
 
 out = pd.concat(parts).sort_values(["test_fold", "image_name"])
 out.to_csv(root / "splits" / "inner_split.csv", index=False)

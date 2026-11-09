@@ -5,7 +5,7 @@ number in the report can be traced back to a run folder. Writes
 report/figures/*.pdf and report/numbers.tex (LaTeX macros with the numbers the
 text uses).
 """
-# AI declaration: the plotting code in this file was written with Claude.
+# The plots were written with AI (Claude).
 from pathlib import Path
 import json
 import sys
@@ -25,8 +25,7 @@ OUT = REPO / "report" / "figures"
 OUT.mkdir(parents=True, exist_ok=True)
 RUNS, M12, TEST = REPO / "results" / "runs", REPO / "results" / "m12", REPO / "results" / "test"
 
-# Colours: a fixed order of four colours, chosen with Claude. Line style is the second encoding,
-# so print/greyscale still works.
+# Colours chosen with AI (Claude). Line styles differ too, so the plots also work in black and white.
 C = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 STYLE = ["-", "--", "-.", ":"]
@@ -43,8 +42,8 @@ ARMS = [("E0", "Plain BCE (E0)"), ("E1", "Weighted BCE (E1)"),
 
 
 def held(run_dir):
-    p = pd.read_csv(Path(run_dir) / "preds.csv")
-    return p[p.split == "held_fold"]
+    preds = pd.read_csv(Path(run_dir) / "preds.csv")
+    return preds[preds.split == "held_fold"]
 
 
 # ---------------------------------------------------------------- Figure 1

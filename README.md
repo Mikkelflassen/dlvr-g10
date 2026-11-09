@@ -246,7 +246,7 @@ person), applies the Phase 3 decision rules and draws the report figures into
 
 The code is built from library calls and from published code that we adapted.
 Code taken from other people names its source in a comment; this is the full list.
-Comments starting with `# AI declaration:` mark the more complex parts written with Claude.
+Comments like `# Written with AI (Claude).` mark the more complex parts written with AI.
 
 **Code we adapted**
 
@@ -262,7 +262,7 @@ Comments starting with `# AI declaration:` mark the more complex parts written w
 
 **Course material**
 
-Code that follows patterns from the course has a `# Course:` comment naming the lecture or lab in
+Comments like `# Based on lab 2` or `# See also lecture 6, Code 5` refer to the labs and lecture notes in
 [Deep Learning for Visual Recognition 2026](https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
 the training loop (lecture 2, Lab 2), BCE loss (lectures 2 and 3), ResNet-18 transfer learning (lectures 4 and 7),
 Dataset pattern and duplicate check (Lab 3), metrics (bonus lecture, week 4), optimisers, schedules, augmentation and

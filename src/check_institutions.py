@@ -33,20 +33,20 @@ else:
     while url:
         for attempt in range(5):
             try:
-                r = requests.get(url, timeout=60)
-                r.raise_for_status()
+                response = requests.get(url, timeout=60)
+                response.raise_for_status()
                 break
-            except requests.RequestException as e:
-                print(f"retry {attempt + 1}: {e}")
+            except requests.RequestException as error:
+                print(f"retry {attempt + 1}: {error}")
                 time.sleep(5)
         else:
             raise RuntimeError("ISIC API not reachable")
-        page = r.json()
-        for im in page["results"]:
+        page = response.json()
+        for image in page["results"]:
             rows.append({
-                "image_name": im["isic_id"],
-                "patient_id": im.get("metadata", {}).get("clinical", {}).get("patient_id"),
-                "attribution": im.get("attribution"),
+                "image_name": image["isic_id"],
+                "patient_id": image.get("metadata", {}).get("clinical", {}).get("patient_id"),
+                "attribution": image.get("attribution"),
             })
         url = page.get("next")
         if len(rows) % 5000 < 100:
@@ -62,18 +62,30 @@ df = pd.concat([dev, test])[["image_name", "target", "split", "fold"]]
 df = df.merge(attr[["image_name", "attribution"]], on="image_name", how="left")
 print(f"\nImages without attribution: {df.attribution.isna().sum()}")
 
-t = (df.groupby(["attribution", "split"])
-       .agg(images=("target", "size"), melanomas=("target", "sum"))
-       .unstack("split", fill_value=0))
-t.columns = [f"{s}_{c}" for c, s in t.columns]
-for s in ["dev", "test"]:
-    t[f"{s}_img_%"] = (100 * t[f"{s}_images"] / t[f"{s}_images"].sum()).round(1)
-    t[f"{s}_mel_%"] = (100 * t[f"{s}_melanomas"] / t[f"{s}_melanomas"].sum()).round(1)
-cols = ["dev_images", "dev_img_%", "dev_melanomas", "dev_mel_%",
-        "test_images", "test_img_%", "test_melanomas", "test_mel_%"]
-pd.set_option("display.width", 200)
-print("\nPer institution:\n", t[cols].sort_values("dev_images", ascending=False))
+table = (
+    df.groupby(["attribution", "split"])
+    .agg(images=("target", "size"), melanomas=("target", "sum"))
+    .unstack("split", fill_value=0)
+)
+table.columns = [f"{split_name}_{column}" for column, split_name in table.columns]
 
-q = df.attribution.fillna("").str.contains("Queensland", case=False)
-print("\nQueensland melanomas per held-out fold:",
-      df[q & (df.split == "dev")].groupby("fold").target.sum().astype(int).to_dict())
+for split_name in ["dev", "test"]:
+    table[f"{split_name}_img_%"] = (
+        100 * table[f"{split_name}_images"] / table[f"{split_name}_images"].sum()
+    ).round(1)
+    table[f"{split_name}_mel_%"] = (
+        100 * table[f"{split_name}_melanomas"] / table[f"{split_name}_melanomas"].sum()
+    ).round(1)
+
+cols = [
+    "dev_images", "dev_img_%", "dev_melanomas", "dev_mel_%",
+    "test_images", "test_img_%", "test_melanomas", "test_mel_%",
+]
+pd.set_option("display.width", 200)
+print("\nPer institution:\n", table[cols].sort_values("dev_images", ascending=False))
+
+queensland = df.attribution.fillna("").str.contains("Queensland", case=False)
+print(
+    "\nQueensland melanomas per held-out fold:",
+    df[queensland & (df.split == "dev")].groupby("fold").target.sum().astype(int).to_dict(),
+)

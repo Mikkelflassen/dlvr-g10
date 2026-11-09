@@ -6,7 +6,6 @@ Sasank Chilamkurthy (BSD-3-Clause):
   https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py
 ResNet: He et al. (2016), https://arxiv.org/abs/1512.03385
 """
-# [C] = our course material: https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026/blob/main
 import torch.nn as nn
 from torchvision import models
 
@@ -24,8 +23,7 @@ def build_model(depth="full", backbone="resnet18"):
     if backbone == "efficientnet_b0":
         return _efficientnet_b0(depth)
 
-    # Course: loading ResNet-18, freezing it and replacing model.fc is in
-    # [C]/lecture_notes/lecture4_notes.md, Code 13, and [C]/lecture_notes/lecture7_notes.md, Code 1.
+    # See also lecture 4, Code 13 and lecture 7, Code 1.
     model = models.resnet18(weights="IMAGENET1K_V1")
 
     # 'frozen' is the tutorial's "ConvNet as fixed feature extractor";
@@ -59,6 +57,6 @@ def _efficientnet_b0(depth):
     return model
 
 
-# Course: why fine-tuning uses a lower learning rate is explained in [C]/lecture_notes/lecture7_notes.md, section 1.4.
+# Lower learning rate for fine-tuning: see lecture 7, section 1.4.
 def default_lr(depth):
     return 1e-3 if depth == "frozen" else 1e-4
