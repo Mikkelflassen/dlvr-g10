@@ -25,16 +25,16 @@ def ece(y, p, n_bins=15):
     bin_lowers = bin_boundaries[:-1]
     bin_uppers = bin_boundaries[1:]
 
-    ece = 0.0
+    total = 0.0
     for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
-        # Calculated |confidence - accuracy| in each bin
+        # |mean score - real share of melanomas| in each bin, weighted by the bin size
         in_bin = (p > bin_lower) & (p <= bin_upper)
         prop_in_bin = in_bin.mean()
         if prop_in_bin > 0:
             accuracy_in_bin = y[in_bin].mean()
             avg_confidence_in_bin = p[in_bin].mean()
-            ece += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-    return float(ece)
+            total += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+    return float(total)
 
 
 # F1 and the precision-recall trade-off: see the bonus lecture (week 4), sections 5 and 7.
@@ -54,9 +54,9 @@ def best_threshold(y, p):
 def false_alarms_to_find(y, p, share):
     """Lowers the threshold until `share` of the melanomas are found, and counts the false alarms."""
     y, p = np.asarray(y), np.asarray(p)
-    pos = np.sort(p[y == 1])[::-1]
-    t = pos[int(np.ceil(share * len(pos))) - 1]
-    return int(((p >= t) & (y == 0)).sum())
+    melanoma_scores = np.sort(p[y == 1])[::-1]                     # highest first
+    cut = melanoma_scores[int(np.ceil(share * len(melanoma_scores))) - 1]
+    return int(((p >= cut) & (y == 0)).sum())                       # benign images above the cut
 
 
 # Based on lab 2 (confusion_matrix) and the bonus lecture (week 4), section 4.
@@ -149,71 +149,95 @@ def e0b(runs_dir, depth, fold, seed=0):
     )
 
 
-
 # Written with AI (Claude).
 def tuning_summary(folder, out_name="summary.md"):
     """Writes a small table for a tuning folder to summary.md (inner validation only)."""
     folder = Path(folder)
+    runs = _tuning_runs(folder)
+    if not runs:
+        return None
+
+    # the settings that differ between the runs become the first columns
+    keys = [key for key in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling",
+                            "epochs", "seed")
+            if len({str(run["cfg"].get(key)) for run in runs}) > 1] or ["tag"]
+
+    table = [f"# {folder.name}", ""]
+    if keys == ["aug"]:
+        table += _augmentation_table(runs)
+    else:
+        table += _counts_table(runs, keys)
+    (folder / out_name).write_text("\n".join(table) + "\n")
+    return folder / out_name
+
+
+# reads every run in a tuning folder and scores it on inner validation at 0.5
+def _tuning_runs(folder):
     runs = []
-    for d in sorted(folder.iterdir()):
-        if not (d / "preds.csv").exists():
+    for run_dir in sorted(folder.iterdir()):
+        if not (run_dir / "preds.csv").exists():
             continue
-        cfg = json.loads((d / "config.json").read_text())
+        cfg = json.loads((run_dir / "config.json").read_text())
         cfg.setdefault("aug", "base")  # runs from before the ladder existed used base
-        preds = pd.read_csv(d / "preds.csv")
+        preds = pd.read_csv(run_dir / "preds.csv")
         inner = preds[preds.split == "inner_val"]
         y, p = inner.target.values, inner.prob.values
         yhat = (p >= 0.5).astype(int)
         runs.append({"cfg": cfg, "fold": cfg["fold"], "c": counts(y, yhat),
                      "auroc": roc_auc_score(y, p)})
-    if not runs:
-        return None
+    return runs
 
-    def num(v):  # sort 7 < 15 < 37, and text alphabetically
+
+# augmentation runs: one row per step, one column per fold
+def _augmentation_table(runs):
+    order = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
+    folds = sorted({run["fold"] for run in runs})
+    auc = {(run["cfg"]["aug"], run["fold"]): run["auroc"] for run in runs}
+    steps = sorted({step for step, _ in auc}, key=lambda step: order.index(step) if step in order else 99)
+
+    lines = ["Inner-validation AUROC. Pick the highest mean.", "",
+             "| aug | " + " | ".join(f"fold {fold}" for fold in folds) + " | mean |",
+             "|" + "---|" * (len(folds) + 2)]
+    for step in steps:
+        values = [auc.get((step, fold)) for fold in folds]
+        found = [value for value in values if value is not None]
+        mean = f"{np.mean(found):.3f}" if len(found) == len(folds) else "–"
+        cells = [f"{value:.3f}" if value is not None else "–" for value in values]
+        lines.append(f"| {step} | " + " | ".join(cells) + f" | {mean} |")
+    return lines
+
+
+# other runs: melanomas found, false alarms and so on, one row per run
+def _counts_table(runs, keys):
+    def as_number(value):  # sort 7 < 15 < 37, and text alphabetically
         try:
-            return (0, float(v), "")
+            return (0, float(value), "")
         except (TypeError, ValueError):
-            return (1, 0.0, str(v))
+            return (1, 0.0, str(value))
 
-    keys = [k for k in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling", "epochs", "seed")
-            if len({str(r["cfg"].get(k)) for r in runs}) > 1] or ["tag"]
-    table = [f"# {folder.name}", ""]
-
-    if keys == ["aug"]:
-        order = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
-        folds = sorted({r["fold"] for r in runs})
-        auc = {(r["cfg"]["aug"], r["fold"]): r["auroc"] for r in runs}
-        steps = sorted({a for a, _ in auc}, key=lambda a: order.index(a) if a in order else 99)
-        table += ["Inner-validation AUROC. Pick the highest mean.", "",
-                  "| aug | " + " | ".join(f"fold {f}" for f in folds) + " | mean |",
-                  "|" + "---|" * (len(folds) + 2)]
-        for a in steps:
-            vals = [auc.get((a, f)) for f in folds]
-            got = [v for v in vals if v is not None]
-            mean = f"{np.mean(got):.3f}" if len(got) == len(folds) else "–"
-            table.append(f"| {a} | " + " | ".join(f"{v:.3f}" if v is not None else "–" for v in vals)
-                         + f" | {mean} |")
-    else:
-        rows = sorted(runs, key=lambda r: (r["fold"], [num(r["cfg"].get(k)) for k in keys]))
-        head = keys + ["fold", "melanomas found", "malignant accuracy", "false alarms",
-                       "benign accuracy", "malignant guesses that are right",
-                       "benign guesses that are right"]
-        table += ["Inner validation, threshold 0.5 (an image is called malignant when "
-                  "the network's output is 0.5 or more).", "",
-                  "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
-        for r in rows:
-            c = r["c"]
-            n_mal, n_ben = c["found"] + c["missed"], c["benign_correct"] + c["false_alarms"]
-            said_mal, said_ben = c["found"] + c["false_alarms"], c["benign_correct"] + c["missed"]
-            table.append("| " + " | ".join([str(r["cfg"].get(k)) for k in keys] + [
-                str(r["fold"]),
-                f"{c['found']} of {n_mal}", f"{c['malignant_accuracy']:.1%}",
-                str(c["false_alarms"]), f"{c['benign_accuracy']:.1%}",
-                f"{c['found']} of {said_mal} ({c['malignant_calls_right']:.1%})",
-                f"{c['benign_correct']:,} of {said_ben:,} ({c['benign_calls_right']:.1%})",
-            ]) + " |")
-    (folder / out_name).write_text("\n".join(table) + "\n")
-    return folder / out_name
+    rows = sorted(runs, key=lambda run: (run["fold"], [as_number(run["cfg"].get(key)) for key in keys]))
+    head = keys + ["fold", "melanomas found", "malignant accuracy", "false alarms",
+                   "benign accuracy", "malignant guesses that are right",
+                   "benign guesses that are right"]
+    lines = ["Inner validation, threshold 0.5 (an image is called malignant when "
+             "the network's output is 0.5 or more).", "",
+             "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for run in rows:
+        c = run["c"]
+        n_mal = c["found"] + c["missed"]
+        said_mal = c["found"] + c["false_alarms"]
+        said_ben = c["benign_correct"] + c["missed"]
+        cells = [str(run["cfg"].get(key)) for key in keys] + [
+            str(run["fold"]),
+            f"{c['found']} of {n_mal}",
+            f"{c['malignant_accuracy']:.1%}",
+            str(c["false_alarms"]),
+            f"{c['benign_accuracy']:.1%}",
+            f"{c['found']} of {said_mal} ({c['malignant_calls_right']:.1%})",
+            f"{c['benign_correct']:,} of {said_ben:,} ({c['benign_calls_right']:.1%})",
+        ]
+        lines.append("| " + " | ".join(cells) + " |")
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +329,7 @@ def trick_gap_by_depth(results, arm):
     """Kang et al. (2020): is a trick's gain over E0 about the same frozen and fully fine-tuned?"""
     out = {"arm": arm}
     for depth in ("frozen", "full"):
-        x, e0 = _paired(results, depth, arm, "E0")
-        out[f"gap_{depth}"] = (x - e0).mean()
-        out[f"gap_{depth}_std"] = (x - e0).std()
+        trick, baseline = _paired(results, depth, arm, "E0")
+        out[f"gap_{depth}"] = (trick - baseline).mean()
+        out[f"gap_{depth}_std"] = (trick - baseline).std()
     return out

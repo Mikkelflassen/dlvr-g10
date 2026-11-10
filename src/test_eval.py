@@ -17,7 +17,7 @@ from eval import ece, counts
 N_BOOT = 2000
 
 
-# all the numbers for one model
+# all the numbers for one model at threshold t
 def _metrics(y, p, t):
     outcome = counts(y, (p >= t).astype(int))
     return {
@@ -34,60 +34,86 @@ def _metrics(y, p, t):
 
 
 def evaluate(repo, out_dir=None, seed=0):
+    """Scores the three final models on the test set. Saves summary.json and summary.md in out_dir."""
     repo = Path(repo)
-    proto = json.loads((repo / "configs" / "test.json").read_text())
-    test = pd.read_csv(repo / "splits" / "test_split.csv")[["image_name", "patient_id", "target"]]
-    attr = pd.read_csv(repo / "splits" / "isic2020_attribution.csv")[["image_name", "attribution"]]
-    test = test.merge(attr, on="image_name", how="left")
-    probs, thr = {}, {}
-    for name, m in proto["models"].items():
-        c = m["config"]
-        run = f"{c['arm']}_{c['depth']}_final_s{c['seed']}" + (f"_{c['tag']}" if c.get("tag") else "")
-        p = pd.read_csv(repo / "results" / "test" / run / "preds.csv")
-        assert len(p) == len(test) and set(p.image_name) == set(test.image_name), f"{run}: not the whole test set"
-        probs[name] = test[["image_name"]].merge(p[["image_name", "prob"]], on="image_name").prob.values
-        thr[name] = m["threshold_80"]
+    protocol = json.loads((repo / "configs" / "test.json").read_text())
+    test, probs, thresholds = _load_test_predictions(repo, protocol)
     y = test.target.values
 
-    rows = {name: _metrics(y, probs[name], thr[name]) for name in probs}
-    aus = test.attribution.fillna("").str.contains("Queensland|Sydney", case=False).values
+    # the numbers for each model, also without the images PanDerm may have seen
+    rows = {name: _metrics(y, probs[name], thresholds[name]) for name in probs}
+    australian = test.attribution.fillna("").str.contains("Queensland|Sydney", case=False).values
     for name in probs:
-        rows[name]["auprc_without_qld_sydney"] = average_precision_score(y[~aus], probs[name][~aus])
+        rows[name]["auprc_without_qld_sydney"] = average_precision_score(y[~australian],
+                                                                         probs[name][~australian])
 
-    # The bootstrap was written with AI (Claude), following the references at the top.
-    # patient bootstrap
-    rng = np.random.default_rng(seed)
-    patients = test.patient_id.values
-    groups = {pid: np.flatnonzero(patients == pid) for pid in np.unique(patients)}
-    pids = np.array(list(groups))
-    boot = {name: {"auprc": [], "auroc": []} for name in probs}
-    for _ in range(N_BOOT):
-        idx = np.concatenate([groups[pid] for pid in rng.choice(pids, len(pids), replace=True)])
-        if y[idx].sum() == 0:
-            continue
-        for name in probs:
-            boot[name]["auprc"].append(average_precision_score(y[idx], probs[name][idx]))
-            boot[name]["auroc"].append(roc_auc_score(y[idx], probs[name][idx]))
-    ci = lambda v: [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))]
+    # 95% intervals and the differences to E0
+    boot, n_patients = _bootstrap(test, probs, seed)
     for name in probs:
-        for k in ("auprc", "auroc"):
-            rows[name][f"{k}_ci95"] = ci(boot[name][k])
+        for metric in ("auprc", "auroc"):
+            rows[name][f"{metric}_ci95"] = _interval(boot[name][metric])
     diffs = {}
     for name in probs:
         if name == "E0":
             continue
-        for k in ("auprc", "auroc"):
-            d = np.array(boot[name][k]) - np.array(boot["E0"][k])
-            diffs[f"{name} - E0 {k}"] = {"diff": rows[name][k] - rows["E0"][k], "ci95": ci(d),
-                                         "share_of_resamples_above_0": float((d > 0).mean())}
-    result = {"protocol": proto, "n_images": int(len(y)), "n_melanomas": int(y.sum()),
-              "n_patients": int(len(pids)), "n_bootstrap": len(boot["E0"]["auprc"]),
+        for metric in ("auprc", "auroc"):
+            d = np.array(boot[name][metric]) - np.array(boot["E0"][metric])
+            diffs[f"{name} - E0 {metric}"] = {"diff": rows[name][metric] - rows["E0"][metric],
+                                              "ci95": _interval(d),
+                                              "share_of_resamples_above_0": float((d > 0).mean())}
+
+    result = {"protocol": protocol, "n_images": int(len(y)), "n_melanomas": int(y.sum()),
+              "n_patients": n_patients, "n_bootstrap": len(boot["E0"]["auprc"]),
               "models": rows, "differences": diffs}
     if out_dir:
         out_dir = Path(out_dir)
         (out_dir / "summary.json").write_text(json.dumps(result, indent=2, default=float))
         (out_dir / "summary.md").write_text(_markdown(result))
     return result
+
+
+# reads the test set and each model's predictions, in the same image order
+def _load_test_predictions(repo, protocol):
+    test = pd.read_csv(repo / "splits" / "test_split.csv")[["image_name", "patient_id", "target"]]
+    attribution = pd.read_csv(repo / "splits" / "isic2020_attribution.csv")[["image_name", "attribution"]]
+    test = test.merge(attribution, on="image_name", how="left")
+
+    probs, thresholds = {}, {}
+    for name, model in protocol["models"].items():
+        c = model["config"]
+        run = f"{c['arm']}_{c['depth']}_final_s{c['seed']}" + (f"_{c['tag']}" if c.get("tag") else "")
+        preds = pd.read_csv(repo / "results" / "test" / run / "preds.csv")
+        assert len(preds) == len(test) and set(preds.image_name) == set(test.image_name), \
+            f"{run}: not the whole test set"
+        probs[name] = test[["image_name"]].merge(preds[["image_name", "prob"]], on="image_name").prob.values
+        thresholds[name] = model["threshold_80"]
+    return test, probs, thresholds
+
+
+# The bootstrap was written with AI (Claude), following the references at the top.
+# We draw patients with replacement and take all images of each drawn patient.
+def _bootstrap(test, probs, seed):
+    """Returns the AUPRC and AUROC of every resample, and the number of patients."""
+    y = test.target.values
+    rng = np.random.default_rng(seed)
+    patients = test.patient_id.values
+    images_of = {pid: np.flatnonzero(patients == pid) for pid in np.unique(patients)}
+    pids = np.array(list(images_of))
+
+    boot = {name: {"auprc": [], "auroc": []} for name in probs}
+    for _ in range(N_BOOT):
+        idx = np.concatenate([images_of[pid] for pid in rng.choice(pids, len(pids), replace=True)])
+        if y[idx].sum() == 0:          # no melanoma drawn: the scores are not defined
+            continue
+        for name in probs:
+            boot[name]["auprc"].append(average_precision_score(y[idx], probs[name][idx]))
+            boot[name]["auroc"].append(roc_auc_score(y[idx], probs[name][idx]))
+    return boot, int(len(pids))
+
+
+def _interval(values):
+    """The 2.5% and 97.5% percentiles."""
+    return [float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))]
 
 
 # writes the tables for summary.md

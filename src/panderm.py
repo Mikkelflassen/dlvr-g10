@@ -48,10 +48,10 @@ def _modeling(panderm_repo):
         return sys.modules["panderm_modeling"]
     path = Path(panderm_repo) / "classification" / "models" / "modeling_finetune.py"
     spec = importlib.util.spec_from_file_location("panderm_modeling", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod     # timm's @register_model looks the module up here
-    spec.loader.exec_module(mod)
-    return mod
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module     # timm's @register_model looks the module up here
+    spec.loader.exec_module(module)
+    return module
 
 
 # The key clean-up and the missing-weights check were written with AI (Claude).
@@ -61,11 +61,12 @@ def _load_weights(model, checkpoint):
     for key in ("model", "state_dict"):
         if isinstance(state, dict) and key in state:
             state = state[key]
-    state = {k.replace("module.", "").replace("encoder.", ""): v for k, v in state.items()}
-    state = {k: v for k, v in state.items() if not k.startswith("head.")}
+    # the file may name the weights "module.x" or "encoder.x"; our model calls them "x"
+    state = {key.replace("module.", "").replace("encoder.", ""): value for key, value in state.items()}
+    state = {key: value for key, value in state.items() if not key.startswith("head.")}
     result = model.load_state_dict(state, strict=False)
     # head: ours, new. pos_embed: fixed sin-cos values built in the code, not learned.
-    missing = [k for k in result.missing_keys if not k.startswith("head.") and k != "pos_embed"]
+    missing = [key for key in result.missing_keys if not key.startswith("head.") and key != "pos_embed"]
     n_found = len(model.state_dict()) - len(result.missing_keys)
     print(f"PanDerm weights: {n_found} tensors loaded, {len(missing)} encoder tensors missing, "
           f"{len(result.unexpected_keys)} extra in file")
@@ -118,12 +119,12 @@ def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
             continue
         # inside meta.WithMeta the ViT is `backbone`; its metadata network and head count as the top
         name = name[len("backbone."):] if name.startswith("backbone.") else name
-        no_wd = param.ndim == 1 or name.endswith(".bias") or name in ("cls_token", "pos_embed")
-        lid = _layer_id(name, n_layers)
-        key = (lid, no_wd)
+        no_decay = param.ndim == 1 or name.endswith(".bias") or name in ("cls_token", "pos_embed")
+        layer = _layer_id(name, n_layers)
+        key = (layer, no_decay)
         if key not in groups:
-            groups[key] = {"params": [], "weight_decay": 0.0 if no_wd else weight_decay,
-                           "lr_scale": layer_decay ** (n_layers + 1 - lid)}
+            groups[key] = {"params": [], "weight_decay": 0.0 if no_decay else weight_decay,
+                           "lr_scale": layer_decay ** (n_layers + 1 - layer)}   # earlier layer = smaller
         groups[key]["params"].append(param)
     return list(groups.values())
 
@@ -131,11 +132,12 @@ def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
 # See also lecture 6, Code 2. PanDerm's version comes from BEiT.
 def cosine_lr(base, final, epochs, steps_per_epoch, warmup_epochs=1):
     """Warm-up, then cosine decay. Adapted from cosine_scheduler (PanDerm classification/furnace/utils.py)."""
-    warm = int(warmup_epochs * steps_per_epoch)
-    total = epochs * steps_per_epoch
-    rest = np.arange(total - warm)
-    cos = final + 0.5 * (base - final) * (1 + np.cos(np.pi * rest / max(len(rest), 1)))
-    return np.concatenate([np.linspace(0, base, warm, endpoint=False), cos])
+    warmup_steps = int(warmup_epochs * steps_per_epoch)
+    total_steps = epochs * steps_per_epoch
+    warmup = np.linspace(0, base, warmup_steps, endpoint=False)     # 0 up to base
+    after = np.arange(total_steps - warmup_steps)
+    cosine = final + 0.5 * (base - final) * (1 + np.cos(np.pi * after / max(len(after), 1)))
+    return np.concatenate([warmup, cosine])
 
 
 # only images, we don't need labels for the features
@@ -155,38 +157,41 @@ class _Images(Dataset):
 def extract(model, df, device, batch_size=128, workers=2):
     """One 768-number feature per image."""
     loader = DataLoader(_Images(df.path), batch_size=batch_size, num_workers=workers)
-    feats, start = [], time.time()
+    features, start = [], time.time()
     for batch, images in enumerate(loader):
         with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=device == "cuda"):
-            feats.append(model(images.to(device)).float().cpu())
+            features.append(model(images.to(device)).float().cpu())
 
         if batch % 50 == 0:
             print(f"  {batch * batch_size}/{len(df)} images, {(time.time() - start) / 60:.1f} min")
 
-    return torch.cat(feats).numpy()
+    return torch.cat(features).numpy()
 
 
 # Written with AI (Claude). See also lecture 4, Code 13.
 def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=None):
     """Trains the linear classifier for one fold. C is chosen on inner validation."""
     start = time.time()
-    index = pd.Series(np.arange(len(dev)), index=dev.image_name)
-    tr, val = inner_split(dev, fold, splits_dir)
+    row_of = pd.Series(np.arange(len(dev)), index=dev.image_name)   # image name -> row in feats
+    train, val = inner_split(dev, fold, splits_dir)
     held = dev[dev.fold == fold]
-    X = {k: feats[index[d.image_name].values] for k, d in (("tr", tr), ("val", val), ("held", held))}
-    y_tr = tr.target.values
+    X = {part: feats[row_of[df.image_name].values]
+         for part, df in (("train", train), ("val", val), ("held", held))}
+    y_train = train.target.values
     tag = "panderm"
-    if extra is not None:
-        X["tr"] = np.concatenate([X["tr"], extra[0]])
-        y_tr = np.concatenate([y_tr, extra[1]])
+    if extra is not None:                    # extra = (features, targets) of ISIC 2019
+        X["train"] = np.concatenate([X["train"], extra[0]])
+        y_train = np.concatenate([y_train, extra[1]])
         tag = "panderm_isic2019"
 
-    scaler = StandardScaler().fit(X["tr"])
-    X = {k: scaler.transform(v) for k, v in X.items()}
+    # scale the features with the training mean and std
+    scaler = StandardScaler().fit(X["train"])
+    X = {part: scaler.transform(features) for part, features in X.items()}
 
+    # try each C and keep the one with the best inner validation AUROC
     history, best = [], None
     for C in C_GRID:
-        clf = LogisticRegression(C=C, max_iter=3000).fit(X["tr"], y_tr)
+        clf = LogisticRegression(C=C, max_iter=3000).fit(X["train"], y_train)
         p_val = clf.predict_proba(X["val"])[:, 1]
         row = {"C": C, "val_auroc": roc_auc_score(val.target, p_val),
                "val_auprc": average_precision_score(val.target, p_val)}

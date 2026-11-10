@@ -29,8 +29,8 @@ def add_meta(df, name=""):
         print(f"{name}: {int(unknown.sum())} images with an unknown site counted as missing:",
               site[unknown].value_counts().to_dict())
         site = site.where(~unknown)
-    for i, s in enumerate(SITES):
-        out[f"meta_site_{i}"] = (site == s).astype(float)
+    for i, site_name in enumerate(SITES):           # one column per body site
+        out[f"meta_site_{i}"] = (site == site_name).astype(float)
     out["meta_site_missing"] = site.isna().astype(float)
     out[META_COLS] = out[META_COLS].astype(np.float32)
     return out
@@ -58,5 +58,6 @@ class WithMeta(nn.Module):
     def blocks(self):          # for panderm.layer_decay_groups
         return self.backbone.blocks
 
-    def forward(self, x, m):
-        return self.fc(torch.cat([self.backbone(x), self.meta(m)], dim=1))
+    def forward(self, image, meta):
+        features = torch.cat([self.backbone(image), self.meta(meta)], dim=1)
+        return self.fc(features)

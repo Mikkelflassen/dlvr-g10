@@ -37,14 +37,17 @@ def inner_split(dev, test_fold, splits_dir):
     Why these choices need their own split: Cawley & Talbot (2010),
       https://jmlr.org/papers/v11/cawley10a.html
     """
-    trn = dev[dev.fold != test_fold].reset_index(drop=True)
+    train_folds = dev[dev.fold != test_fold].reset_index(drop=True)
     inner = pd.read_csv(Path(splits_dir) / "inner_split.csv")
-    is_val = trn.image_name.isin(inner.loc[inner.test_fold == test_fold, "image_name"])
-    tr, val = trn[~is_val].reset_index(drop=True), trn[is_val].reset_index(drop=True)
-    # Same kind of guard as for dev/test: no patient on both sides, nothing missing.
-    assert is_val.sum() == (inner.test_fold == test_fold).sum(), "inner_split.csv does not match dev_split.csv"
-    assert not set(tr.patient_id) & set(val.patient_id), "a patient is in both train and inner_val"
-    return tr, val
+    val_names = inner.loc[inner.test_fold == test_fold, "image_name"]
+    is_val = train_folds.image_name.isin(val_names)
+    train = train_folds[~is_val].reset_index(drop=True)
+    val = train_folds[is_val].reset_index(drop=True)
+
+    # checks: nothing missing, and no patient on both sides
+    assert is_val.sum() == len(val_names), "inner_split.csv does not match dev_split.csv"
+    assert not set(train.patient_id) & set(val.patient_id), "a patient is in both train and inner_val"
+    return train, val
 
 
 # The augmentation ladder: each step keeps everything from the steps before it.
@@ -85,10 +88,10 @@ def make_transform(train, augment=False, aug="base", size=256):
     if aug == "randaug":
         level = 1  # base only; RandAugment replaces the hand-picked steps
 
-    before, after = [], []  # applied to the PIL image / to the tensor
+    on_image, on_tensor = [], []   # steps before and after the image becomes a tensor
     if train and augment and level >= 1:
         # base
-        before += [
+        on_image += [
             transforms.RandomResizedCrop(size, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),   # Ha et al.: VerticalFlip(p=0.5)
@@ -96,9 +99,9 @@ def make_transform(train, augment=False, aug="base", size=256):
         if aug == "randaug":
             # torchvision defaults, which are the paper's ImageNet ResNet-50 setting
             # (N=2 operations, magnitude M=9 out of 30).
-            before += [transforms.RandAugment(num_ops=2, magnitude=9)]
+            on_image += [transforms.RandAugment(num_ops=2, magnitude=9)]
         if level >= 2:  # geo
-            before += [
+            on_image += [
                 # Ha et al.: Transpose(p=0.5)
                 transforms.RandomApply([transforms.Lambda(_transpose)], p=0.5),
                 # Ha et al.: ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1,
@@ -107,14 +110,14 @@ def make_transform(train, augment=False, aug="base", size=256):
                     degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1))], p=0.85),
             ]
         if level >= 3:  # light
-            before += [
+            on_image += [
                 # Ha et al.: RandomBrightness(limit=0.2, p=0.75)
                 transforms.RandomApply([transforms.ColorJitter(brightness=0.2)], p=0.75),
                 # Ha et al.: RandomContrast(limit=0.2, p=0.75)
                 transforms.RandomApply([transforms.ColorJitter(contrast=0.2)], p=0.75),
             ]
         if level >= 4:  # colour
-            before += [
+            on_image += [
                 # Ha et al.: HueSaturationValue(hue_shift_limit=10, sat_shift_limit=20,
                 #                               val_shift_limit=10, p=0.5)
                 # Their limits are on OpenCV's scale (hue 0-180, the others 0-255):
@@ -124,16 +127,18 @@ def make_transform(train, augment=False, aug="base", size=256):
                     brightness=0.04, saturation=0.08, hue=0.056)], p=0.5),
             ]
         if level >= 5:  # cutout
-            after += [
+            on_tensor += [
                 # Ha et al.: Cutout(max_h_size=0.375 * size, max_w_size=0.375 * size,
                 #                   num_holes=1, p=0.7)
                 # One black square with side 0.375 of the image = 14% of its area.
                 transforms.RandomErasing(p=0.7, scale=(0.14, 0.14), ratio=(1.0, 1.0), value=0),
             ]
     # panderm needs 224 px from our 256 px images, so we crop the centre, as PanDerm does
-    if not before:
-        before = [transforms.CenterCrop(size)]
-    return transforms.Compose(before + [transforms.ToTensor()] + after
+    if not on_image:
+        on_image = [transforms.CenterCrop(size)]
+    return transforms.Compose(on_image
+                              + [transforms.ToTensor()]
+                              + on_tensor
                               + [transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
 
@@ -160,14 +165,16 @@ class ISICDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
 
+        target = torch.tensor(row.target).float()
         if self.meta is not None:
-            return (image, torch.from_numpy(self.meta[index])), torch.tensor(row.target).float()
-        return image, torch.tensor(row.target).float()
+            return (image, torch.from_numpy(self.meta[index])), target
+        return image, target
 
 
 def sampling_weights(target, mal_frac):
     """Weights so that a share `mal_frac` of the images drawn is malignant. Adapted from ptrblck (see make_loader)."""
     target = np.asarray(target).astype(int)
+    # images per class, then a weight per class, then a weight per image
     class_sample_count = np.array(
         [len(np.where(target == t)[0]) for t in np.unique(target)])
     weight = np.array([1. - mal_frac, mal_frac]) / class_sample_count

@@ -20,8 +20,8 @@ def build_loss(arm, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
         #   https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
         if pos_weight is None:
             raise ValueError("E1 needs pos_weight")
-        w = torch.tensor([pos_weight], dtype=torch.float32, device=device)
-        return nn.BCEWithLogitsLoss(pos_weight=w)
+        weight = torch.tensor([pos_weight], dtype=torch.float32, device=device)
+        return nn.BCEWithLogitsLoss(pos_weight=weight)
     # See also lecture 8, Code 5 (focal loss). Here we use the torchvision version.
     if arm in ("E3", "E5"):
         # Library: torchvision.ops.sigmoid_focal_loss, the focal loss of Lin et al. (2017).
