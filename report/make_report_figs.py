@@ -165,12 +165,14 @@ else:
     preds = test["PanDerm FT + ISIC 2019"]
     false_alarms = preds[preds.target == 0].sort_values("prob", ascending=False).head(4)
     missed = preds[preds.target == 1].sort_values("prob").head(4)
-    fig, axes = plt.subplots(2, 4, figsize=(12, 6.4))
-    for row_axes, rows, true in ((axes[0], false_alarms, "benign"), (axes[1], missed, "melanoma")):
-        for ax, row in zip(row_axes, rows.itertuples()):
+    # one sub-figure per row, so each row has its own title line above the image titles
+    fig = plt.figure(figsize=(12, 7.4), constrained_layout=True)
+    rows = ((false_alarms, "Benign, called melanoma (false alarms)"), (missed, "Melanoma, missed"))
+    for subfig, (images, row_title) in zip(fig.subfigures(2, 1, hspace=0.06), rows):
+        subfig.suptitle(row_title, x=0.01, ha="left", fontsize=12, fontweight="bold")
+        for ax, row in zip(subfig.subplots(1, 4), images.itertuples()):
             ax.imshow(Image.open(IMAGES / f"{row.image_name}.jpg"))
-            ax.set_title(f"True: {true}\nmelanoma score {row.prob:.3f}", fontsize=9)
+            ax.set_title(f"score {row.prob:.4f}", fontsize=11, pad=6)
             ax.axis("off")
-    plt.tight_layout()
     save(fig, "fig5_test_mistakes")
     pd.concat([false_alarms, missed]).to_csv(OUT / "fig5_test_mistakes.csv", index=False)
