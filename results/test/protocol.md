@@ -1,6 +1,6 @@
 # Our test set protocol
 
-We wrote this on 2 November 2026, before we opened the test set.
+We wrote this on 2 November 2026, before we opened the test set (commit `0ed4b91`, then `docs/test_protocol.md`). On 9 November we moved the file here and shortened the wording. No model, setting, threshold or rule was changed. The first test predictions are from 3 November (commits `ab6141f`, `4ad8bb6`, `71402e9`).
 
 The locked test set is `splits/test_split.csv`. It has 4,630 images. We made it once on 22 September 2026 and did not use it until this final test.
 

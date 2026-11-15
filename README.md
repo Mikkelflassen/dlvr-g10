@@ -68,7 +68,7 @@ More details are in `results/test/summary.md`.
 
 - **ResNet-18.** It is small and fast, so 40 runs were possible.
 - **Frozen and fully fine-tuned.** Kang et al. suggest these tricks mainly act on the last layer, so we tested both.
-- **8 epochs.** A test with 12 epochs did not do better.
+- **8 epochs.** A pilot with 12 epochs on fold 0 did not do better. We deleted that run with the other pilots on 5 October, so it is only in the git history.
 - **We keep the epoch with the best inner validation AUROC.** The loss differs between the setups, so it cannot be compared.
 - **Augmentation `light`.** Without augmentation the network memorised the training images. All augmented versions were close. `light` was best on both folds and does not change the colour, which matters for melanoma. More tests would not have separated them, so we stopped.
 
@@ -102,6 +102,8 @@ More details are in `results/test/summary.md`.
 
 - **We chose the best model on the held-out folds.** So 0.322 is a bit too high. The test score, 0.291, is the fair one.
 - **One seed per run.** We did not have GPU time for more. The small differences between the tricks may be noise.
+- **The learning rates are not tuned.** We used 1e-3 (frozen) and 1e-4 (full) from the start, and PanDerm's own value scaled to our batch size.
+- **E6 trains longer.** It has 4 extra epochs, so 12 in total.
 - **Duplicates inside ISIC 2020.** We only built the hash check after the grid, for ISIC 2019. It found 32 pairs across our splits with the same hash, 7 of them with the test set, all benign. Without those 7 test images the scores do not change.
 
 ## How we worked
@@ -139,6 +141,7 @@ results/     runs/     the grid
              test/     the final models, scores and protocol
              figures/  figures from the notebooks
              results.csv  scores of E0-E3
+report/      make_report_figs.py, the script that makes the figures of the report
 requirements.txt  the Python packages
 ```
 
@@ -165,6 +168,7 @@ Nothing needs to be trained. All results are saved in `results/`.
 
 - `notebooks/G10_analysis.ipynb` makes the grid tables and figures. Start Jupyter in the `notebooks` folder. No GPU or images needed.
 - `results/test/summary.md` has the test set scores.
+- `python report/make_report_figs.py . figures` makes figures 1-4 of the report from `results/`. It needs `torch` and `torchmetrics`, but no GPU and no images. Figure 5 also needs the image folder as a third argument.
 
 The other notebooks show how we trained. They need our GitHub repository, so they cannot run from these files.
 
@@ -202,7 +206,7 @@ Comments like `# Based on lab 2` or `# See also lecture 6, Code 5` refer to the 
 [Deep Learning for Visual Recognition 2026](https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
 the training loop (lecture 2, Lab 2), BCE loss (lectures 2 and 3), ResNet-18 transfer learning (lectures 4 and 7),
 Dataset pattern and duplicate check (Lab 3), metrics (bonus lecture, week 4), optimisers, schedules, augmentation and
-best-epoch saving (lecture 6), focal loss (lecture 8), checkpoints (Lab 6).
+best-epoch saving (lecture 6, Lab 7), the loss on clean training images (Lab 7), the plots of the report (Lab 4a, Lab 2), focal loss (lecture 8), checkpoints (Lab 6).
 
 **Libraries called directly**
 

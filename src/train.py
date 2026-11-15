@@ -337,6 +337,8 @@ def _train_one_epoch(model, loader, criterion, optimizer, scaler, lr_schedule, s
     return running_loss / n_seen, step
 
 
+# As in lab 7: the loss during training is measured on augmented images, so we measure it
+# again on clean training images to compare it with inner validation.
 def _score_epoch(model, criterion, cfg, device, loaders, frames):
     """Scores the clean training sample, inner validation and (only for the long training
     check) the held-out fold. The held-out fold is only recorded, never used to pick the epoch.
