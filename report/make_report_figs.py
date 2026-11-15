@@ -4,12 +4,11 @@ Written with AI (Claude). The plotting is the code from the course labs
 (https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
   - Lab 4a (lab_solutions/Lab4a_ImageClassification_Solution.ipynb): torchmetrics' .plot()
     for confusion matrices and precision-recall curves, and the matplotlib loss curves.
-  - Lab 2 (labs/Lab2_TransferLearning.ipynb): the grid of the most confident mistakes.
 Our changes: several models in one figure (ax=...), one precision-recall curve per model
 instead of one per class, AUROC instead of accuracy, and the test threshold from our protocol.
 
-Run:  python report/make_report_figs.py <path to repo> <output folder> [<folder with the ISIC 2020 jpgs>]
-Figures 1-4 only need the repo. Figure 5 also needs the images (for example /content/isic/train).
+Run:  python report/make_report_figs.py <path to repo> <output folder>
+Only the repo is needed: no GPU and no images.
 """
 import json
 import sys
@@ -28,7 +27,6 @@ from torchmetrics.classification import (
 
 REPO = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
-IMAGES = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 OUT.mkdir(parents=True, exist_ok=True)
 
 num_classes = 2
@@ -155,24 +153,3 @@ for ax, (name, (key, _)) in zip(axes, test_runs.items()):
 plt.tight_layout()
 save(fig, "fig4b_test_confmat")
 
-
-# ---- Figure 5: the most confident mistakes on the test set (Lab 2) ----
-# Top row: benign images with the highest melanoma score. Bottom row: melanomas with the lowest.
-if IMAGES is None:
-    print("no image folder given: figure 5 skipped")
-else:
-    from PIL import Image
-    preds = test["PanDerm FT + ISIC 2019"]
-    false_alarms = preds[preds.target == 0].sort_values("prob", ascending=False).head(4)
-    missed = preds[preds.target == 1].sort_values("prob").head(4)
-    # one sub-figure per row, so each row has its own title line above the image titles
-    fig = plt.figure(figsize=(12, 7.4), constrained_layout=True)
-    rows = ((false_alarms, "Benign, called melanoma (false alarms)"), (missed, "Melanoma, missed"))
-    for subfig, (images, row_title) in zip(fig.subfigures(2, 1, hspace=0.06), rows):
-        subfig.suptitle(row_title, x=0.01, ha="left", fontsize=12, fontweight="bold")
-        for ax, row in zip(subfig.subplots(1, 4), images.itertuples()):
-            ax.imshow(Image.open(IMAGES / f"{row.image_name}.jpg"))
-            ax.set_title(f"score {row.prob:.4f}", fontsize=11, pad=6)
-            ax.axis("off")
-    save(fig, "fig5_test_mistakes")
-    pd.concat([false_alarms, missed]).to_csv(OUT / "fig5_test_mistakes.csv", index=False)

@@ -168,7 +168,7 @@ Nothing needs to be trained. All results are saved in `results/`.
 
 - `notebooks/G10_analysis.ipynb` makes the grid tables and figures. Start Jupyter in the `notebooks` folder. No GPU or images needed.
 - `results/test/summary.md` has the test set scores.
-- `python report/make_report_figs.py . figures` makes figures 1-4 of the report from `results/`. It needs `torch` and `torchmetrics`, but no GPU and no images. Figure 5 also needs the image folder as a third argument.
+- `python report/make_report_figs.py . figures` makes the figures of the report from `results/`. It needs `torch` and `torchmetrics`, but no GPU and no images.
 
 The other notebooks show how we trained. They need our GitHub repository, so they cannot run from these files.
 
@@ -182,7 +182,6 @@ The other notebooks show how we trained. They need our GitHub repository, so the
 | `G10_panderm` | PanDerm as a frozen network |
 | `G10_m12` | The extension |
 | `G10_test` | The final models and the test set |
-| `G10_fig5` | Figure 5 of the report (needs the images) |
 
 ## Sources
 
@@ -207,7 +206,7 @@ Comments like `# Based on lab 2` or `# See also lecture 6, Code 5` refer to the 
 [Deep Learning for Visual Recognition 2026](https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
 the training loop (lecture 2, Lab 2), BCE loss (lectures 2 and 3), ResNet-18 transfer learning (lectures 4 and 7),
 Dataset pattern and duplicate check (Lab 3), metrics (bonus lecture, week 4), optimisers, schedules, augmentation and
-best-epoch saving (lecture 6, Lab 7), the loss on clean training images (Lab 7), the plots of the report (Lab 4a, Lab 2), focal loss (lecture 8), checkpoints (Lab 6).
+best-epoch saving (lecture 6, Lab 7), the loss on clean training images (Lab 7), the plots of the report (Lab 4a), focal loss (lecture 8), checkpoints (Lab 6).
 
 **Libraries called directly**
 
