@@ -182,6 +182,7 @@ The other notebooks show how we trained. They need our GitHub repository, so the
 | `G10_panderm` | PanDerm as a frozen network |
 | `G10_m12` | The extension |
 | `G10_test` | The final models and the test set |
+| `G10_fig5` | Figure 5 of the report (needs the images) |
 
 ## Sources
 
