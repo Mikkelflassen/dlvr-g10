@@ -1,5 +1,5 @@
 {
-  "arm": "E3",
+  "experiment": "E3",
   "depth": "full",
   "epochs": 8,
   "gamma": 1,

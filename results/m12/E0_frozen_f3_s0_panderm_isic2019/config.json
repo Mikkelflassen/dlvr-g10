@@ -1,5 +1,5 @@
 {
-  "arm": "E0",
+  "experiment": "E0",
   "depth": "frozen",
   "backbone": "panderm_base",
   "img_size": 224,

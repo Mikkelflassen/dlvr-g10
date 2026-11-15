@@ -32,8 +32,8 @@ from data import load_splits, inner_split, make_loader, sampling_weights
 from models import build_model, default_lr
 from losses import build_loss
 
-SAMPLER_ARMS = ("E2", "E5")   # arms that use the balanced sampler
-FOCAL_ARMS = ("E3", "E5")     # arms that use the focal loss
+SAMPLER_EXPERIMENTS = ("E2", "E5")   # experiments that use the balanced sampler
+FOCAL_EXPERIMENTS = ("E3", "E5")     # experiments that use the focal loss
 
 
 # saves which code version a run used
@@ -135,7 +135,7 @@ def _add_defaults(cfg, device):
     cfg.setdefault("amp", cfg["backbone"] == "panderm_base" and device == "cuda")
     cfg.setdefault("extra_root", "/content/isic2019")
 
-    if cfg["arm"] == "E6":                         # LibAUC's default settings, see auc_stage
+    if cfg["experiment"] == "E6":                         # LibAUC's default settings, see auc_stage
         cfg.setdefault("auc_epochs", 4)
         cfg.setdefault("auc_lr", 0.1)
         cfg.setdefault("margin", 1.0)
@@ -144,9 +144,9 @@ def _add_defaults(cfg, device):
 
     cfg.setdefault("meta", False)                  # True: age, sex, body site next to the image (meta.py)
     cfg.setdefault("workers", min(8, os.cpu_count() or 2))   # more cpus just makes loading faster
-    cfg.setdefault("balanced", cfg["arm"] in SAMPLER_ARMS)    # E5 = E2's sampler + E3's focal loss
+    cfg.setdefault("balanced", cfg["experiment"] in SAMPLER_EXPERIMENTS)    # E5 = E2's sampler + E3's focal loss
 
-    if cfg["arm"] in SAMPLER_ARMS:
+    if cfg["experiment"] in SAMPLER_EXPERIMENTS:
         cfg.setdefault("mal_frac", 0.5)
         # "fixed" uses the same share every epoch. "progressive" is progressively-balanced
         # sampling (Kang et al., 2020, Sec. 3, https://arxiv.org/abs/1910.09217): the share
@@ -155,29 +155,29 @@ def _add_defaults(cfg, device):
     return cfg
 
 
-# stop if a setting does nothing on this arm, else the run gets a wrong name
+# stop if a setting does nothing on this experiment, else the run gets a wrong name
 def _check_settings(cfg):
-    arm = cfg["arm"]
-    if arm == "E6" and cfg["backbone"] != "resnet18":
+    experiment = cfg["experiment"]
+    if experiment == "E6" and cfg["backbone"] != "resnet18":
         raise ValueError("E6 is set up for ResNet-18 (model.fc)")
-    if cfg.get("pos_weight") is not None and arm != "E1":
-        raise ValueError(f"pos_weight is set but the arm is {arm}; it only has an effect on E1")
-    if cfg.get("mal_frac") is not None and arm not in SAMPLER_ARMS:
-        raise ValueError(f"mal_frac is set but the arm is {arm}; it only has an effect on E2/E5")
-    if cfg.get("sampling") is not None and arm not in SAMPLER_ARMS:
-        raise ValueError(f"sampling is set but the arm is {arm}; it only has an effect on E2/E5")
-    if arm in SAMPLER_ARMS and cfg["sampling"] not in ("fixed", "progressive"):
+    if cfg.get("pos_weight") is not None and experiment != "E1":
+        raise ValueError(f"pos_weight is set but the experiment is {experiment}; it only has an effect on E1")
+    if cfg.get("mal_frac") is not None and experiment not in SAMPLER_EXPERIMENTS:
+        raise ValueError(f"mal_frac is set but the experiment is {experiment}; it only has an effect on E2/E5")
+    if cfg.get("sampling") is not None and experiment not in SAMPLER_EXPERIMENTS:
+        raise ValueError(f"sampling is set but the experiment is {experiment}; it only has an effect on E2/E5")
+    if experiment in SAMPLER_EXPERIMENTS and cfg["sampling"] not in ("fixed", "progressive"):
         raise ValueError(f"sampling must be 'fixed' or 'progressive', got {cfg['sampling']!r}")
-    if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and arm not in FOCAL_ARMS:
-        raise ValueError(f"gamma/alpha is set but the arm is {arm}; it only has an effect on E3/E5")
+    if (cfg.get("gamma") is not None or cfg.get("alpha") is not None) and experiment not in FOCAL_EXPERIMENTS:
+        raise ValueError(f"gamma/alpha is set but the experiment is {experiment}; it only has an effect on E3/E5")
 
 
 # for example E0_full_f0_s0, or E0_full_final_s0 for the test set
 def _run_name(cfg, final):
     if final:
-        name = f"{cfg['arm']}_{cfg['depth']}_final_s{cfg['seed']}"
+        name = f"{cfg['experiment']}_{cfg['depth']}_final_s{cfg['seed']}"
     else:
-        name = f"{cfg['arm']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}"
+        name = f"{cfg['experiment']}_{cfg['depth']}_f{cfg['fold']}_s{cfg['seed']}"
     if cfg.get("tag"):
         name += "_" + cfg["tag"]
     return name
@@ -341,7 +341,7 @@ def _score_epoch(model, criterion, cfg, device, loaders, frames):
     """Scores the clean training sample, inner validation and (only for the long training
     check) the held-out fold. The held-out fold is only recorded, never used to pick the epoch.
 
-    The losses use this arm's own loss, so only compare them within an arm.
+    The losses use this experiment's own loss, so only compare them within an experiment.
     """
     check_loader, val_loader, held_loader = loaders
     train_check, inner_val, held = frames
@@ -485,7 +485,7 @@ def _predictions(model, final, inner_val, held, val_loader, held_loader, device,
 
 # The setup code here was written with AI (Claude). Borrowed parts name their source above.
 def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoch_hook=None):
-    """Trains one run. cfg holds the settings (arm, depth, fold, seed, epochs and so on).
+    """Trains one run. cfg holds the settings (experiment, depth, fold, seed, epochs and so on).
 
     `tag` is added to the folder name, so test runs do not overwrite each other.
     final=True trains on all dev images and predicts the test set (results/test/protocol.md).
@@ -510,7 +510,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
 
     # 3. network, loss and optimizer
     model = _build_network(cfg, device)
-    criterion = build_loss(cfg["arm"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
+    criterion = build_loss(cfg["experiment"], cfg.get("pos_weight"), cfg.get("gamma", 2.0),
                            device, cfg.get("alpha", -1))
     optimizer, lr_schedule = _build_optimizer(model, cfg, len(train_loader))
     scaler = torch.amp.GradScaler("cuda", enabled=cfg["amp"])
@@ -581,7 +581,7 @@ def run(cfg, splits_dir, data_root, runs_dir, device=None, resume_dir=None, epoc
         model.load_state_dict(torch.load(best_model_params_path, map_location=device))
 
     # E6: stage 1 above was plain BCE; stage 2 trains with the AUC-margin loss
-    if cfg["arm"] == "E6":
+    if cfg["experiment"] == "E6":
         cfg["stage1_best_inner_auroc"] = best_auc
         best_auc = auc_stage(model, cfg, train_df, train_loader, val_loader, inner_val, check_loader,
                              train_check, device, history, since)

@@ -201,7 +201,7 @@ def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=Non
             best = (row, clf)
     row, clf = best
 
-    cfg = {"arm": "E0", "depth": "frozen", "backbone": "panderm_base", "img_size": 224,
+    cfg = {"experiment": "E0", "depth": "frozen", "backbone": "panderm_base", "img_size": 224,
            "fold": fold, "seed": 0, "tag": tag, "probe": "logistic_regression",
            "C": row["C"], "C_grid": C_GRID, "augment": False, **(extra_cfg or {})}
     if extra is not None:

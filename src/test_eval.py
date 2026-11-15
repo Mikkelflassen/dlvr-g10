@@ -81,7 +81,7 @@ def _load_test_predictions(repo, protocol):
     probs, thresholds = {}, {}
     for name, model in protocol["models"].items():
         c = model["config"]
-        run = f"{c['arm']}_{c['depth']}_final_s{c['seed']}" + (f"_{c['tag']}" if c.get("tag") else "")
+        run = f"{c['experiment']}_{c['depth']}_final_s{c['seed']}" + (f"_{c['tag']}" if c.get("tag") else "")
         preds = pd.read_csv(repo / "results" / "test" / run / "preds.csv")
         assert len(preds) == len(test) and set(preds.image_name) == set(test.image_name), \
             f"{run}: not the whole test set"

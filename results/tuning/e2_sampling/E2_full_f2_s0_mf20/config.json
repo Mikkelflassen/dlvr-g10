@@ -1,5 +1,5 @@
 {
-  "arm": "E2",
+  "experiment": "E2",
   "depth": "full",
   "epochs": 8,
   "fold": 2,

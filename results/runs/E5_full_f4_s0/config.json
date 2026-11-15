@@ -1,5 +1,5 @@
 {
-  "arm": "E5",
+  "experiment": "E5",
   "depth": "full",
   "epochs": 8,
   "mal_frac": 0.15,

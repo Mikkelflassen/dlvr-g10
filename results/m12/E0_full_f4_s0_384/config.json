@@ -1,5 +1,5 @@
 {
-  "arm": "E0",
+  "experiment": "E0",
   "depth": "full",
   "epochs": 8,
   "img_size": 384,

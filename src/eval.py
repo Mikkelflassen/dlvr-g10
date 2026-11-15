@@ -93,7 +93,7 @@ def score_run(run_dir, threshold=0.5):
     y, p = held.target.values, held.prob.values
     yhat = (p >= threshold).astype(int)
     return {
-        "run": cfg["run"], "arm": cfg["arm"], "depth": cfg["depth"],
+        "run": cfg["run"], "experiment": cfg["experiment"], "depth": cfg["depth"],
         "fold": cfg["fold"], "seed": cfg["seed"], "threshold": round(threshold, 4),
         "auroc": roc_auc_score(y, p),
         "auprc": average_precision_score(y, p),
@@ -110,7 +110,7 @@ def score_run(run_dir, threshold=0.5):
 
 # one row per run, plus a row with the tuned cut
 def build_results(runs_dir, out_csv=None, tuned_all=False):
-    """Makes one table from all run folders. E0 also gets a tuned row. tuned_all=True does this for every arm."""
+    """Makes one table from all run folders. E0 also gets a tuned row. tuned_all=True does this for every experiment."""
     rows = []
     for run_dir in sorted(Path(runs_dir).iterdir()):
         if not (run_dir / "preds.csv").exists():
@@ -119,9 +119,9 @@ def build_results(runs_dir, out_csv=None, tuned_all=False):
         row = score_run(run_dir) | {"cut": "0.5"}
         rows.append(row)
 
-        if row["arm"] == "E0" or tuned_all:
+        if row["experiment"] == "E0" or tuned_all:
             rows.append(
-                score_run(run_dir, threshold="tuned") | {"arm": row["arm"] + "b", "cut": "tuned"}
+                score_run(run_dir, threshold="tuned") | {"experiment": row["experiment"] + "b", "cut": "tuned"}
             )
 
     df = pd.DataFrame(rows)
@@ -134,7 +134,7 @@ def summarise(results):
     """Mean and std over the folds."""
     return (
         results
-        .groupby(["arm", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
+        .groupby(["experiment", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
         .agg(["mean", "std"])
         .round(4)
     )
@@ -145,7 +145,7 @@ def e0b(runs_dir, depth, fold, seed=0):
     """E0 with the threshold tuned on inner validation."""
     return (
         score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}", threshold="tuned")
-        | {"arm": "E0b"}
+        | {"experiment": "E0b"}
     )
 
 
@@ -158,7 +158,7 @@ def tuning_summary(folder, out_name="summary.md"):
         return None
 
     # the settings that differ between the runs become the first columns
-    keys = [key for key in ("arm", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling",
+    keys = [key for key in ("experiment", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling",
                             "epochs", "seed")
             if len({str(run["cfg"].get(key)) for run in runs}) > 1] or ["tag"]
 
@@ -243,27 +243,27 @@ def _counts_table(runs, keys):
 # ---------------------------------------------------------------------------
 # Our decision rules. We wrote them before we ran the grid.
 
-# same folds for both arms so the comparison is fair
+# same folds for both experiments so the comparison is fair
 def _paired(results, depth, a, b, metric="auprc"):
-    """The scores of two arms on the folds they both have."""
+    """The scores of two experiments on the folds they both have."""
     rows = results[(results.cut == "0.5") & (results.depth == depth)]
-    scores_a = rows[rows.arm == a].set_index("fold")[metric]
-    scores_b = rows[rows.arm == b].set_index("fold")[metric]
+    scores_a = rows[rows.experiment == a].set_index("fold")[metric]
+    scores_b = rows[rows.experiment == b].set_index("fold")[metric]
     folds = sorted(set(scores_a.index) & set(scores_b.index))
     return scores_a.loc[folds], scores_b.loc[folds]
 
 
 # our rule: higher mean and better on 4 of 5 folds
-def trick_helps(results, arm, depth, min_wins=4):
+def trick_helps(results, experiment, depth, min_wins=4):
     """A trick helps if its mean AUPRC is above E0 and it wins on at least `min_wins` folds."""
-    trick, baseline = _paired(results, depth, arm, "E0")
+    trick, baseline = _paired(results, depth, experiment, "E0")
     wins = int((trick > baseline).sum())
 
     if len(trick) == 0:
-        return {"arm": arm, "depth": depth, "folds": 0, "helps": "no shared folds yet"}
+        return {"experiment": experiment, "depth": depth, "folds": 0, "helps": "no shared folds yet"}
 
     return {
-        "arm": arm,
+        "experiment": experiment,
         "depth": depth,
         "folds": len(trick),
         "auprc": trick.mean(),
@@ -302,9 +302,9 @@ def e1_vs_e2(results, depth, tie=0.01):
 
 
 # if the gap is smaller than the fold spread, frozen wins
-def depth_choice(results, arm):
+def depth_choice(results, experiment):
     """Higher mean AUPRC wins. If the gap is within the fold spread, frozen wins."""
-    rows = results[(results.cut == "0.5") & (results.arm == arm)]
+    rows = results[(results.cut == "0.5") & (results.experiment == experiment)]
     full, frozen = rows[rows.depth == "full"].auprc, rows[rows.depth == "frozen"].auprc
     spread = max(full.std(), frozen.std())
     gap = full.mean() - frozen.mean()
@@ -315,7 +315,7 @@ def depth_choice(results, arm):
         winner = "full" if gap > spread else "frozen"
 
     return {
-        "arm": arm,
+        "experiment": experiment,
         "auprc_full": full.mean(),
         "auprc_frozen": frozen.mean(),
         "gap": gap,
@@ -325,11 +325,11 @@ def depth_choice(results, arm):
 
 
 # Kang et al. (2020): https://arxiv.org/abs/1910.09217
-def trick_gap_by_depth(results, arm):
+def trick_gap_by_depth(results, experiment):
     """Kang et al. (2020): is a trick's gain over E0 about the same frozen and fully fine-tuned?"""
-    out = {"arm": arm}
+    out = {"experiment": experiment}
     for depth in ("frozen", "full"):
-        trick, baseline = _paired(results, depth, arm, "E0")
+        trick, baseline = _paired(results, depth, experiment, "E0")
         out[f"gap_{depth}"] = (trick - baseline).mean()
         out[f"gap_{depth}_std"] = (trick - baseline).std()
     return out

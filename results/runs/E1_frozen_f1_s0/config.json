@@ -1,5 +1,5 @@
 {
-  "arm": "E1",
+  "experiment": "E1",
   "depth": "frozen",
   "epochs": 8,
   "pos_weight": 21,
