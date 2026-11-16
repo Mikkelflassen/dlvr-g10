@@ -1,4 +1,4 @@
-"""Our ResNet-18 with one output.
+"""The ResNet-18 we use, with a single output.
 
 Adapted from the PyTorch "Transfer Learning for Computer Vision" tutorial by S. Chilamkurthy (BSD-3-Clause):
   https://docs.pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
@@ -13,7 +13,7 @@ BACKBONES = ("resnet18", "efficientnet_b0")
 
 
 def build_model(depth="full", backbone="resnet18"):
-    """depth: 'frozen' trains the last layer, 'full' trains the whole network."""
+    """depth: with 'frozen' only the last layer is trained, with 'full' the whole network is."""
     if depth not in ("frozen", "full"):
         raise ValueError(f"depth must be 'frozen' or 'full', got {depth!r}")
     if backbone not in BACKBONES:
@@ -24,21 +24,21 @@ def build_model(depth="full", backbone="resnet18"):
     # See also lecture 4, Code 13 and lecture 7, Code 1.
     model = models.resnet18(weights="IMAGENET1K_V1")
 
-    # frozen and full are the tutorial's two transfer learning scenarios
+    # the tutorial has the same two transfer learning scenarios, frozen and full
     if depth == "frozen":
         for param in model.parameters():
             param.requires_grad = False
 
-    # one output with BCE, the tutorial uses 2 with cross-entropy
+    # we use one output with BCE, where the tutorial has 2 outputs with cross-entropy
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, 1)
     return model
 
 
 def _efficientnet_b0(depth):
-    """EfficientNet-B0 (Tan & Le, 2019, https://arxiv.org/abs/1905.11946) with one output.
+    """EfficientNet-B0 (Tan & Le, 2019, https://arxiv.org/abs/1905.11946), with a single output.
 
-    The ISIC 2020 winners used this family (Ha et al., 2020, https://arxiv.org/abs/2010.05351).
+    This family was used by the ISIC 2020 winners (Ha et al., 2020, https://arxiv.org/abs/2010.05351).
       https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.efficientnet_b0.html
     """
     model = models.efficientnet_b0(weights="IMAGENET1K_V1")

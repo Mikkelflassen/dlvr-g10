@@ -1,10 +1,10 @@
-"""Finds the institution of each ISIC 2020 image, and counts images and melanomas per institution.
+"""Looks up the institution of every ISIC 2020 image, and counts images and melanomas per institution.
 
-PanDerm (Yan et al. 2025) was pretrained on Australian cohorts. The Queensland images in
-ISIC 2020 (Rotemberg et al. 2021, Sci Data 8:34) may come from the same studies.
+The pretraining data of PanDerm (Yan et al. 2025) include Australian cohorts. The Queensland
+images in ISIC 2020 (Rotemberg et al. 2021, Sci Data 8:34) could be from the same studies.
 
 Data: ISIC Archive API, collection 70: https://api.isic-archive.com/api/docs/v2
-Saves splits/isic2020_attribution.csv.
+The result is saved in splits/isic2020_attribution.csv.
 """
 from pathlib import Path
 import time
@@ -20,10 +20,10 @@ if out.exists():
     attr = pd.read_csv(out)
     print(f"Read {len(attr)} rows from {out.name}")
 else:
-    # the api gives 100 images at a time, so we go page by page
+    # the api returns 100 images per page, so we read one page after another
     rows, url = [], f"{URL}?collections=70&limit=100"
     while url:
-        # the api sometimes fails, so we try 5 times
+        # the api fails now and then, so each page gets 5 tries
         for attempt in range(5):
             try:
                 response = requests.get(url, timeout=60)
@@ -55,7 +55,7 @@ df = pd.concat([dev, test])[["image_name", "target", "split", "fold"]]
 df = df.merge(attr[["image_name", "attribution"]], on="image_name", how="left")
 print(f"\nImages without attribution: {df.attribution.isna().sum()}")
 
-# images and melanomas per hospital, in dev and test
+# images and melanomas for each hospital, in dev and in test
 table = (
     df.groupby(["attribution", "split"])
     .agg(images=("target", "size"), melanomas=("target", "sum"))

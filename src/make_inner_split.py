@@ -1,7 +1,7 @@
-"""How we made splits/inner_split.csv. Do not run it again.
+"""This is how splits/inner_split.csv was made. It should not be run again.
 
-For each held-out fold, the other four folds are split 80/20, grouped by patient.
-We saved it because scikit-learn 1.8 gives a different split than 1.7 with the same seed.
+For every held-out fold, we split the four other folds 80/20, grouped by patient.
+The result is saved, since scikit-learn 1.8 and 1.7 give different splits for the same seed.
 
 Library: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html
 Why patients must not be split: C. Deotte, https://www.kaggle.com/code/cdeotte/triple-stratified-kfold-with-tfrecords
@@ -16,7 +16,7 @@ SEED = 0
 root = Path(__file__).resolve().parents[1]
 dev = pd.read_csv(root / "splits" / "dev_split.csv")
 
-# 80/20 split for each held-out fold, patients stay together
+# an 80/20 split per held-out fold, where a patient is never divided
 parts = []
 for test_fold in range(5):
     train_folds = dev[dev.fold != test_fold].reset_index(drop=True)

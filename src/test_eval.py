@@ -1,7 +1,7 @@
-"""Scores the locked test set. We ran this once.
+"""Scores the locked test set. This was run one time.
 
-Everything was fixed before we opened the test set (results/test/protocol.md).
-The 95% intervals come from a bootstrap over patients (2,000 resamples).
+All choices were fixed before the test set was opened (results/test/protocol.md).
+For the 95% intervals we bootstrap over patients (2,000 resamples).
   Efron & Tibshirani (1993), An Introduction to the Bootstrap.
   Field & Welsh (2007), https://doi.org/10.1111/j.1467-9868.2007.00593.x
 """
@@ -17,7 +17,7 @@ from eval import ece, counts
 N_BOOT = 2000
 
 
-# all the numbers for one model at threshold t
+# every number for a single model at threshold t
 def _metrics(y, p, t):
     outcome = counts(y, (p >= t).astype(int))
     return {
@@ -34,20 +34,20 @@ def _metrics(y, p, t):
 
 
 def evaluate(repo, out_dir=None, seed=0):
-    """Scores the three final models on the test set. Saves summary.json and summary.md in out_dir."""
+    """Scores the three final models on the test set and writes summary.json and summary.md to out_dir."""
     repo = Path(repo)
     protocol = json.loads((repo / "configs" / "test.json").read_text())
     test, probs, thresholds = _load_test_predictions(repo, protocol)
     y = test.target.values
 
-    # the numbers for each model, also without the images PanDerm may have seen
+    # each model's numbers, once more with the images PanDerm may have seen left out
     rows = {name: _metrics(y, probs[name], thresholds[name]) for name in probs}
     australian = test.attribution.fillna("").str.contains("Queensland|Sydney", case=False).values
     for name in probs:
         rows[name]["auprc_without_qld_sydney"] = average_precision_score(y[~australian],
                                                                          probs[name][~australian])
 
-    # 95% intervals and the differences to E0
+    # the 95% intervals, and how far each model is from E0
     boot, n_patients = _bootstrap(test, probs, seed)
     for name in probs:
         for metric in ("auprc", "auroc"):
@@ -72,7 +72,7 @@ def evaluate(repo, out_dir=None, seed=0):
     return result
 
 
-# reads the test set and each model's predictions, in the same image order
+# loads the test set and the predictions of each model, with the images in the same order
 def _load_test_predictions(repo, protocol):
     test = pd.read_csv(repo / "splits" / "test_split.csv")[["image_name", "patient_id", "target"]]
     attribution = pd.read_csv(repo / "splits" / "isic2020_attribution.csv")[["image_name", "attribution"]]
@@ -91,9 +91,9 @@ def _load_test_predictions(repo, protocol):
 
 
 # The bootstrap was written with AI (Claude), following the references at the top.
-# We draw patients with replacement and take all images of each drawn patient.
+# Patients are drawn with replacement, and every image of a drawn patient is taken along.
 def _bootstrap(test, probs, seed):
-    """Returns the AUPRC and AUROC of every resample, and the number of patients."""
+    """Gives back the AUPRC and AUROC of each resample, plus the number of patients."""
     y = test.target.values
     rng = np.random.default_rng(seed)
     patients = test.patient_id.values
@@ -103,7 +103,7 @@ def _bootstrap(test, probs, seed):
     boot = {name: {"auprc": [], "auroc": []} for name in probs}
     for _ in range(N_BOOT):
         idx = np.concatenate([images_of[pid] for pid in rng.choice(pids, len(pids), replace=True)])
-        if y[idx].sum() == 0:          # no melanoma drawn: the scores are not defined
+        if y[idx].sum() == 0:          # without a melanoma in the draw, the scores cannot be computed
             continue
         for name in probs:
             boot[name]["auprc"].append(average_precision_score(y[idx], probs[name][idx]))
@@ -112,11 +112,11 @@ def _bootstrap(test, probs, seed):
 
 
 def _interval(values):
-    """The 2.5% and 97.5% percentiles."""
+    """The percentiles at 2.5% and 97.5%."""
     return [float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))]
 
 
-# writes the tables for summary.md
+# builds the tables that go into summary.md
 def _markdown(result):
     lines = [
         f"# Test set (opened once) — {result['n_images']} images, {result['n_melanomas']} melanomas, "

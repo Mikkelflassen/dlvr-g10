@@ -1,4 +1,4 @@
-"""The loss for each setup."""
+"""Builds the loss of each setup."""
 from functools import partial
 
 import torch
@@ -22,13 +22,13 @@ def build_loss(experiment, pos_weight=None, gamma=2.0, device="cpu", alpha=-1):
             raise ValueError("E1 needs pos_weight")
         weight = torch.tensor([pos_weight], dtype=torch.float32, device=device)
         return nn.BCEWithLogitsLoss(pos_weight=weight)
-    # See also lecture 8, Code 5 (focal loss). Here we use the torchvision version.
+    # See also lecture 8, Code 5 (focal loss). We use the version from torchvision.
     if experiment in ("E3", "E5"):
         # Library: torchvision.ops.sigmoid_focal_loss, the focal loss of Lin et al. (2017).
         #   https://arxiv.org/abs/1708.02002
         #   https://github.com/pytorch/vision/blob/main/torchvision/ops/focal_loss.py
-        # alpha -1 means off, so E3 does not overlap with E1
-        # Calibration motivation: Mukhoti et al. (2020), https://arxiv.org/abs/2002.09437
+        # alpha is switched off with -1, which keeps E3 from overlapping with E1
+        # The link to calibration: Mukhoti et al. (2020), https://arxiv.org/abs/2002.09437
         return partial(sigmoid_focal_loss, alpha=alpha, gamma=gamma, reduction="mean")
     # Based on lecture 2, Code 5 and lecture 3, Code 4.
     return nn.BCEWithLogitsLoss()

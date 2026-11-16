@@ -1,4 +1,4 @@
-# Most of these are already installed in Google Colab.
+# Google Colab already has most of these installed.
 torch
 torchvision
 timm

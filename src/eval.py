@@ -1,4 +1,4 @@
-"""All our metrics, calculated from the saved preds.csv files.
+"""Every metric we use, computed from the saved preds.csv files.
 
 scikit-learn: https://scikit-learn.org/stable/modules/model_evaluation.html
 """
@@ -13,12 +13,12 @@ from sklearn.metrics import (roc_auc_score, average_precision_score,
 
 
 def ece(y, p, n_bins=15):
-    """Expected calibration error: how far the network's percentages are from the real rates.
+    """Expected calibration error: the gap between the percentages the network gives and what really happens.
 
     Naeini et al. (2015); Guo et al. (2017), https://arxiv.org/abs/1706.04599
     Adapted from `_ECELoss` (G. Pleiss, MIT):
       https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py
-    Changes: NumPy instead of torch, and the binary form.
+    What we changed: NumPy in place of torch, and the binary form.
     """
     y, p = np.asarray(y, dtype=float), np.asarray(p, dtype=float)
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
@@ -27,7 +27,7 @@ def ece(y, p, n_bins=15):
 
     total = 0.0
     for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
-        # |mean score - real share of melanomas| in each bin, weighted by the bin size
+        # per bin: |mean score - true share of melanomas|, weighted by how many images the bin holds
         in_bin = (p > bin_lower) & (p <= bin_upper)
         prop_in_bin = in_bin.mean()
         if prop_in_bin > 0:
@@ -39,29 +39,29 @@ def ece(y, p, n_bins=15):
 
 # F1 and the precision-recall trade-off: see the bonus lecture (week 4), sections 5 and 7.
 def best_threshold(y, p):
-    """The threshold with the highest F1. We only use it on inner validation.
+    """Finds the threshold where F1 is highest. Used on inner validation only.
 
       https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_curve.html
       https://scikit-learn.org/stable/modules/classification_threshold.html
     """
     precision, recall, thresholds = precision_recall_curve(y, p)
-    precision, recall = precision[:-1], recall[:-1]  # last point has no threshold
+    precision, recall = precision[:-1], recall[:-1]  # the last point comes without a threshold
     f1 = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
     return float(thresholds[int(np.argmax(f1))])
 
 
 # Written with AI (Claude).
 def false_alarms_to_find(y, p, share):
-    """Lowers the threshold until `share` of the melanomas are found, and counts the false alarms."""
+    """Moves the threshold down until `share` of the melanomas are found, then counts the false alarms."""
     y, p = np.asarray(y), np.asarray(p)
-    melanoma_scores = np.sort(p[y == 1])[::-1]                     # highest first
+    melanoma_scores = np.sort(p[y == 1])[::-1]                     # sorted from high to low
     cut = melanoma_scores[int(np.ceil(share * len(melanoma_scores))) - 1]
-    return int(((p >= cut) & (y == 0)).sum())                       # benign images above the cut
+    return int(((p >= cut) & (y == 0)).sum())                       # benign images that score above the cut
 
 
 # Based on lab 2 (confusion_matrix) and the bonus lecture (week 4), section 4.
 def counts(y, yhat):
-    """Melanomas found and missed, false alarms, and the percentages.
+    """How many melanomas were found and missed, the false alarms, and the same as percentages.
 
       https://scikit-learn.org/stable/modules/generated/sklearn.metrics.confusion_matrix.html
     """
@@ -77,9 +77,9 @@ def counts(y, yhat):
 
 # AP (we call it AUPRC): see the bonus lecture (week 4), sections 6 and 7.
 def score_run(run_dir, threshold=0.5):
-    """Scores one run on the held-out fold.
+    """Scores a single run on its held-out fold.
 
-    threshold is a number or "tuned" (best F1 on inner validation).
+    threshold can be a number, or "tuned" for the best F1 on inner validation.
     """
     run_dir = Path(run_dir)
     cfg = json.loads((run_dir / "config.json").read_text())
@@ -108,9 +108,9 @@ def score_run(run_dir, threshold=0.5):
     }
 
 
-# one row per run, plus a row with the tuned cut
+# each run gets one row, and one more row for the tuned cut
 def build_results(runs_dir, out_csv=None, tuned_all=False):
-    """Makes one table from all run folders. E0 also gets a tuned row. tuned_all=True does this for every experiment."""
+    """Builds one table from all the run folders. E0 gets a tuned row too, and with tuned_all=True all experiments do."""
     rows = []
     for run_dir in sorted(Path(runs_dir).iterdir()):
         if not (run_dir / "preds.csv").exists():
@@ -131,7 +131,7 @@ def build_results(runs_dir, out_csv=None, tuned_all=False):
 
 
 def summarise(results):
-    """Mean and std over the folds."""
+    """Mean and std across the folds."""
     return (
         results
         .groupby(["experiment", "depth"])[["auroc", "auprc", "recall", "f1", "ece"]]
@@ -140,9 +140,9 @@ def summarise(results):
     )
 
 
-# E0 again but with the tuned threshold
+# E0 once more, now with the tuned threshold
 def e0b(runs_dir, depth, fold, seed=0):
-    """E0 with the threshold tuned on inner validation."""
+    """E0, with its threshold tuned on inner validation."""
     return (
         score_run(Path(runs_dir) / f"E0_{depth}_f{fold}_s{seed}", threshold="tuned")
         | {"experiment": "E0b"}
@@ -151,13 +151,13 @@ def e0b(runs_dir, depth, fold, seed=0):
 
 # Written with AI (Claude).
 def tuning_summary(folder, out_name="summary.md"):
-    """Writes a small table for a tuning folder to summary.md (inner validation only)."""
+    """Writes summary.md for a tuning folder: a small table, scored on inner validation only."""
     folder = Path(folder)
     runs = _tuning_runs(folder)
     if not runs:
         return None
 
-    # the settings that differ between the runs become the first columns
+    # settings that are not the same in all runs go into the first columns
     keys = [key for key in ("experiment", "aug", "pos_weight", "gamma", "alpha", "mal_frac", "sampling",
                             "epochs", "seed")
             if len({str(run["cfg"].get(key)) for run in runs}) > 1] or ["tag"]
@@ -171,14 +171,14 @@ def tuning_summary(folder, out_name="summary.md"):
     return folder / out_name
 
 
-# reads every run in a tuning folder and scores it on inner validation at 0.5
+# reads all runs of a tuning folder and scores each on inner validation at 0.5
 def _tuning_runs(folder):
     runs = []
     for run_dir in sorted(folder.iterdir()):
         if not (run_dir / "preds.csv").exists():
             continue
         cfg = json.loads((run_dir / "config.json").read_text())
-        cfg.setdefault("aug", "base")  # runs from before the ladder existed used base
+        cfg.setdefault("aug", "base")  # base was used by the runs made before the ladder existed
         preds = pd.read_csv(run_dir / "preds.csv")
         inner = preds[preds.split == "inner_val"]
         y, p = inner.target.values, inner.prob.values
@@ -188,7 +188,7 @@ def _tuning_runs(folder):
     return runs
 
 
-# augmentation runs: one row per step, one column per fold
+# augmentation runs: a row for each step and a column for each fold
 def _augmentation_table(runs):
     order = ["none", "base", "geo", "light", "colour", "cutout", "randaug"]
     folds = sorted({run["fold"] for run in runs})
@@ -207,9 +207,9 @@ def _augmentation_table(runs):
     return lines
 
 
-# other runs: melanomas found, false alarms and so on, one row per run
+# all other runs: a row per run with melanomas found, false alarms and so on
 def _counts_table(runs, keys):
-    def as_number(value):  # sort 7 < 15 < 37, and text alphabetically
+    def as_number(value):  # numbers sort as 7 < 15 < 37, text sorts alphabetically
         try:
             return (0, float(value), "")
         except (TypeError, ValueError):
@@ -241,11 +241,11 @@ def _counts_table(runs, keys):
 
 
 # ---------------------------------------------------------------------------
-# Our decision rules. We wrote them before we ran the grid.
+# The decision rules. They were written down before the grid was run.
 
-# same folds for both experiments so the comparison is fair
+# both experiments are compared on the same folds, which keeps it fair
 def _paired(results, depth, a, b, metric="auprc"):
-    """The scores of two experiments on the folds they both have."""
+    """Scores of two experiments, on the folds that both of them have."""
     rows = results[(results.cut == "0.5") & (results.depth == depth)]
     scores_a = rows[rows.experiment == a].set_index("fold")[metric]
     scores_b = rows[rows.experiment == b].set_index("fold")[metric]
@@ -253,9 +253,9 @@ def _paired(results, depth, a, b, metric="auprc"):
     return scores_a.loc[folds], scores_b.loc[folds]
 
 
-# our rule: higher mean and better on 4 of 5 folds
+# the rule: a higher mean, and better on 4 of the 5 folds
 def trick_helps(results, experiment, depth, min_wins=4):
-    """A trick helps if its mean AUPRC is above E0 and it wins on at least `min_wins` folds."""
+    """A trick helps when its mean AUPRC is higher than E0's and it wins on `min_wins` folds or more."""
     trick, baseline = _paired(results, depth, experiment, "E0")
     wins = int((trick > baseline).sum())
 
@@ -274,9 +274,9 @@ def trick_helps(results, experiment, depth, min_wins=4):
     }
 
 
-# if they are almost equal the lower ece wins
+# when they are nearly equal, the one with the lower ece wins
 def e1_vs_e2(results, depth, tie=0.01):
-    """Higher mean AUPRC wins. A difference under 0.01 is a tie, then the lower ECE wins."""
+    """The higher mean AUPRC wins. Under 0.01 difference it counts as a tie, and the lower ECE decides."""
     auprc_e1, auprc_e2 = _paired(results, depth, "E1", "E2")
     ece_e1, ece_e2 = _paired(results, depth, "E1", "E2", "ece")
     diff = auprc_e1.mean() - auprc_e2.mean()
@@ -301,9 +301,9 @@ def e1_vs_e2(results, depth, tie=0.01):
     }
 
 
-# if the gap is smaller than the fold spread, frozen wins
+# frozen wins when the gap is smaller than the spread over folds
 def depth_choice(results, experiment):
-    """Higher mean AUPRC wins. If the gap is within the fold spread, frozen wins."""
+    """The higher mean AUPRC wins, but frozen wins when the gap is inside the fold spread."""
     rows = results[(results.cut == "0.5") & (results.experiment == experiment)]
     full, frozen = rows[rows.depth == "full"].auprc, rows[rows.depth == "frozen"].auprc
     spread = max(full.std(), frozen.std())
@@ -326,7 +326,7 @@ def depth_choice(results, experiment):
 
 # Kang et al. (2020): https://arxiv.org/abs/1910.09217
 def trick_gap_by_depth(results, experiment):
-    """Kang et al. (2020): is a trick's gain over E0 about the same frozen and fully fine-tuned?"""
+    """Kang et al. (2020): does a trick gain about as much over E0 when frozen as when fully fine-tuned?"""
     out = {"experiment": experiment}
     for depth in ("frozen", "full"):
         trick, baseline = _paired(results, depth, experiment, "E0")

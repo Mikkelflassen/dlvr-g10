@@ -1,18 +1,18 @@
-"""Step `isic2019`: ISIC 2019 images as extra training data.
+"""Step `isic2019`: ISIC 2019 images used as extra training data.
 
 Our rules:
-  - Training only. Validation, held-out folds and test stay ISIC 2020.
-  - Only melanoma is 1. Everything else is 0.
-  - ISIC 2019 images that are also in ISIC 2020 are removed first.
+- They are for training only. Validation, the held-out folds and the test set remain ISIC 2020.
+- Melanoma is 1 and all other diagnoses are 0.
+- Before anything else, ISIC 2019 images that also exist in ISIC 2020 are taken out.
 
 Data: C. Deotte's resized ISIC 2019: https://www.kaggle.com/datasets/cdeotte/jpeg-isic2019-256x256
-Reading it follows Ha et al.'s `get_df` (dataset.py, MIT):
+The reading code follows `get_df` by Ha et al. (dataset.py, MIT):
   https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution/blob/master/dataset.py
 ISIC 2019: Tschandl et al. 2018, Codella et al. 2018, Combalia et al. 2019.
 
-Duplicate check: each image gets a pHash. Images that differ in at most T bits count as duplicates.
-T comes from ISIC 2020's official list of 425 duplicates, but is at least 6 bits.
-We chose the loose side, because it only costs a few training images.
+Duplicate check: every image gets a pHash, and two images are duplicates when at most T bits differ.
+T is set from the official ISIC 2020 list of 425 duplicates, with 6 bits as the minimum.
+We went for the loose side, since the only cost is a few training images.
   https://github.com/JohannesBuchner/imagehash
   https://challenge2020.isic-archive.com/
 """
@@ -30,7 +30,7 @@ _POP = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
 
 
 def load_meta(root2019):
-    """ISIC 2019 rows as in Ha et al.'s get_df, with our target."""
+    """The ISIC 2019 rows, read as in Ha et al.'s get_df and given our target."""
     root2019 = Path(root2019)
     df = pd.read_csv(root2019 / "train.csv")
     df = df[df["tfrecord"] >= 0].reset_index(drop=True)
@@ -45,7 +45,7 @@ def _phash(path):
     return np.packbits(bits).view(">u8")[0]
 
 
-# hashing is slow so we use all the cpus
+# all cpus are used because hashing is slow
 def phash_all(paths, workers=2):
     with Pool(workers) as pool:
         return np.array(pool.map(_phash, list(paths), chunksize=256), dtype=np.uint64)
@@ -53,26 +53,26 @@ def phash_all(paths, workers=2):
 
 # _POP, _hamming and nearest were written with AI (Claude).
 def _hamming(a, b):
-    """The number of different bits between all hashes in a and b."""
+    """How many bits differ, for every pair of hashes from a and b."""
     different_bits = np.bitwise_xor(a[:, None], b[None, :])
-    # _POP counts the 1-bits in each byte; a hash has 8 bytes
+    # _POP gives the number of 1-bits per byte, and each hash is 8 bytes
     return _POP[different_bits.view(np.uint8)].reshape(len(a), len(b), 8).sum(axis=2, dtype=np.uint8)
 
 
 def _distance(a, b):
-    """Hamming distance between a[i] and b[i], for every i."""
+    """The Hamming distance from a[i] to b[i], for each i."""
     return _POP[np.bitwise_xor(a, b).view(np.uint8)].reshape(-1, 8).sum(axis=1)
 
 
 def nearest(a, b, same_set=False, chunk=400):
-    """The closest hash in b for each hash in a. Done in chunks so it fits in memory."""
+    """For every hash in a, the closest hash in b. Works in chunks to stay within memory."""
     dist = np.empty(len(a), dtype=np.uint8)
     idx = np.empty(len(a), dtype=np.int64)
     for start in range(0, len(a), chunk):
         end = start + chunk
         d = _hamming(a[start:end], b)
         rows = np.arange(d.shape[0])
-        if same_set:                     # an image is not its own nearest neighbour
+        if same_set:                     # an image cannot be its own nearest neighbour
             d[rows, np.arange(start, start + d.shape[0])] = 255
         idx[start:end] = d.argmin(axis=1)
         dist[start:end] = d[rows, idx[start:end]]
@@ -81,27 +81,27 @@ def nearest(a, b, same_set=False, chunk=400):
 
 # Written with AI (Claude). Idea from lab 3 (find_train_val_duplicates); we use pHash instead of ResNet features.
 def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
-    """We ran this once. Saves the allowed ISIC 2019 images, the removed ones, and near-identical pairs inside our splits."""
+    """Run once. Saves the allowed and the removed ISIC 2019 images, and near-identical pairs in our splits."""
     splits_dir, root2020 = Path(splits_dir), Path(root2020)
     ours = _our_images(splits_dir, root2020)
     ext = load_meta(root2019)
     summary = {"isic2019_rows": int(len(ext)), "isic2019_melanomas": int(ext.target.sum())}
 
-    # 1. Set T with ISIC 2020's known duplicate pairs (both copies are on disk).
+    # 1. Choose T from the known duplicate pairs of ISIC 2020 (we have both copies on disk).
     T = _threshold(splits_dir, root2020, workers, summary)
 
-    # 2. Hash our ISIC 2020 images and ISIC 2019.
+    # 2. Compute the hashes of our ISIC 2020 images and of ISIC 2019.
     print(f"hashing {len(ours)} ISIC 2020 and {len(ext)} ISIC 2019 images ...")
     h2020 = phash_all(ours.path, workers)
     h2019 = phash_all(ext.path, workers)
 
-    # How often do two *unrelated* ISIC 2020 images fall within T (false alarms)?
+    # How often are two *unrelated* ISIC 2020 images within T of each other (false alarms)?
     _random_pairs(ours, h2020, T, summary)
 
-    # 3. ISIC 2019 vs ISIC 2020: same image name, or hash within T.
+    # 3. ISIC 2019 against ISIC 2020: the image name is the same, or the hash is within T.
     dup = _isic2019_duplicates(ext, ours, h2019, h2020, T, splits_dir, summary)
 
-    # 4. Inside ISIC 2020: near-identical images on different sides of a split.
+    # 4. Within ISIC 2020: near-identical images that sit on different sides of a split.
     _cross_split_pairs(ours, h2020, T, splits_dir, summary)
 
     if out_figure:
@@ -110,7 +110,7 @@ def build(splits_dir, root2020, root2019, out_figure=None, workers=2):
     return summary
 
 
-# all our ISIC 2020 images (dev and test) and where they are: fold0..fold4 or test
+# every ISIC 2020 image we use (dev and test) with its place: fold0..fold4 or test
 def _our_images(splits_dir, root2020):
     dev = pd.read_csv(splits_dir / "dev_split.csv")
     test = pd.read_csv(splits_dir / "test_split.csv")
@@ -121,7 +121,7 @@ def _our_images(splits_dir, root2020):
     return ours
 
 
-# T covers 99% of the known duplicate pairs, but is at least MIN_T bits
+# T is set to cover 99% of the known duplicate pairs, with MIN_T bits as the minimum
 def _threshold(splits_dir, root2020, workers, summary):
     official = pd.read_csv(splits_dir / "isic2020_official_duplicates.csv")
     print("hashing the 425 official ISIC 2020 duplicate pairs ...")
@@ -135,7 +135,7 @@ def _threshold(splits_dir, root2020, workers, summary):
     return T
 
 
-# 200,000 random pairs of images from different patients
+# 200,000 random image pairs, each from two different patients
 def _random_pairs(ours, h2020, T, summary):
     rng = np.random.default_rng(0)
     i, j = rng.integers(0, len(h2020), 200_000), rng.integers(0, len(h2020), 200_000)
@@ -145,7 +145,7 @@ def _random_pairs(ours, h2020, T, summary):
     print(f"random pairs of different patients within {T}: {100 * (random_distance <= T).mean():.3f}%")
 
 
-# saves the removed ISIC 2019 images and the ones we keep; returns the removed ones
+# writes the removed and the kept ISIC 2019 images to files, and returns the removed ones
 def _isic2019_duplicates(ext, ours, h2019, h2020, T, splits_dir, summary):
     distance, nearest_row = nearest(h2019, h2020)
     ext["nearest_2020"] = ours.image_name.values[nearest_row]
@@ -169,7 +169,7 @@ def _isic2019_duplicates(ext, ours, h2019, h2020, T, splits_dir, summary):
     return dup
 
 
-# saves near-identical ISIC 2020 pairs that are in different folds, or one in the test set
+# writes the near-identical ISIC 2020 pairs that are split over two folds or over dev and test
 def _cross_split_pairs(ours, h2020, T, splits_dir, summary):
     distance, nearest_row = nearest(h2020, h2020, same_set=True)
     pairs = ours.assign(other=ours.image_name.values[nearest_row],
@@ -177,7 +177,7 @@ def _cross_split_pairs(ours, h2020, T, splits_dir, summary):
                         other_patient=ours.patient_id.values[nearest_row],
                         distance=distance)
     cross = pairs[(pairs.distance <= T) & (pairs["where"] != pairs.other_where)]
-    cross = cross[cross.image_name < cross.other]           # each pair once
+    cross = cross[cross.image_name < cross.other]           # count each pair only once
     cross[["image_name", "where", "other", "other_where", "distance", "target"]].to_csv(
         splits_dir / "isic2020_near_duplicates.csv", index=False)
     touching_test = (cross["where"] == "test") | (cross.other_where == "test")
@@ -185,9 +185,9 @@ def _cross_split_pairs(ours, h2020, T, splits_dir, summary):
                     "isic2020_cross_split_pairs_touching_test": int(touching_test.sum())})
 
 
-# puts the pairs next to each other so we can check them by eye
+# shows the pairs side by side, so that we can check them by eye
 def _figure(dup, ours, path, T, n=8):
-    """The removed pairs closest to the threshold, side by side."""
+    """The removed pairs that are nearest to the threshold, shown next to each other."""
     import matplotlib.pyplot as plt
     rows = dup.head(n)
     if rows.empty:
@@ -213,7 +213,7 @@ def _figure(dup, ours, path, T, n=8):
 
 
 def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
-    """Example pairs at each hash distance."""
+    """A few example pairs for every hash distance."""
     import matplotlib.pyplot as plt
     splits_dir, root2020, root2019 = Path(splits_dir), Path(root2020), Path(root2019)
     dup = pd.read_csv(splits_dir / "isic2019_duplicates.csv")
@@ -260,9 +260,9 @@ def pairs_figure(splits_dir, root2020, root2019, path, per_distance=6):
     plt.close(fig)
 
 
-# only the isic 2019 images that passed the duplicate check
+# just the isic 2019 images that got through the duplicate check
 def load_extra(splits_dir, root2019):
-    """The ISIC 2019 training images that passed the duplicate check."""
+    """The ISIC 2019 images for training, after the duplicate check."""
     kept_csv = Path(splits_dir) / "isic2019_train.csv"
     if not kept_csv.exists():
         raise FileNotFoundError("splits/isic2019_train.csv is missing: run notebooks/"

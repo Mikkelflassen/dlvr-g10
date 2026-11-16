@@ -1,10 +1,10 @@
-# we do not keep the trained models, the predictions are in preds.csv
+# the trained models are not kept; preds.csv has the predictions
 *.pt
 
-# python and notebook files we do not need
+# python and notebook files that are not needed
 __pycache__/
 .ipynb_checkpoints/
 
-# the images stay outside the repo
+# images are kept outside the repo
 isic/
 *.zip

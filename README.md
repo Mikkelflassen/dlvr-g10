@@ -1,22 +1,22 @@
 # Group 10: Finding melanomas in skin images
 
-Course project in Deep Learning for Visual Recognition, Aarhus University, autumn 2026.
+This is our course project in Deep Learning for Visual Recognition at Aarhus University, autumn 2026.
 
 ## The project
 
-We train a network to find melanomas in the ISIC 2020 images. Only 1.8% of the images are melanomas.
+The network in this project looks for melanomas in the ISIC 2020 images, where only 1.8% of the images show a melanoma.
 
-Our question: do the usual tricks for unbalanced data make the network better, or do they only move the threshold?
+The question we ask: when the data are unbalanced, do the usual tricks make the network better, or do they only move the threshold?
 
-1. **The grid.** Plain BCE against three tricks, on ResNet-18, frozen and fine-tuned, on 5 folds (40 runs). Later we added E5 and E6.
-2. **The extension (M12).** The tricks did not help much, so we tried to make the network itself better.
-3. **The test set (M13).** At the end we tested three models once on our locked test set.
+1. **The grid.** Plain BCE is compared with three tricks on a ResNet-18, both frozen and fine-tuned, on 5 folds (40 runs). E5 and E6 were added later.
+2. **The extension (M12).** Since the tricks helped very little, we tried to improve the network itself.
+3. **The test set (M13).** In the end, three models were tested one time on our locked test set.
 
 ## Results
 
-AUPRC is our main score. Random guessing gives 0.018. The numbers are the mean of 5 held-out folds, with full fine-tuning unless we say otherwise.
+Our main score is AUPRC, which is 0.018 for random guessing. Unless we say something else, a number is the mean of the 5 held-out folds with full fine-tuning.
 
-Our rule: a change only helps if its mean AUPRC is higher than the base and it is better on at least 4 of 5 folds.
+The rule we use: a change helps only when its mean AUPRC is above the base and it wins on at least 4 of 5 folds.
 
 | Setup | Mean AUPRC | Folds better than the base | Helps? |
 |---|---|---|---|
@@ -35,9 +35,9 @@ Our rule: a change only helps if its mean AUPRC is higher than the base and it i
 | PanDerm, fine-tuned, + ISIC 2019 | 0.322 | 5 of 5 | yes, our best |
 | PanDerm, fine-tuned, + ISIC 2019 + age, sex, body site | 0.317 | 5 of 5 | yes |
 
-The tricks mostly moved the threshold. Real extra melanomas and a network pretrained on skin images helped the most.
+What the tricks did was mostly to move the threshold. The largest gains came from real extra melanomas and from a network pretrained on skin images.
 
-Test set (4,630 images, 82 melanomas), once:
+The test set (4,630 images, 82 melanomas), scored one time:
 
 | Model | AUPRC (95% interval) | AUROC (95% interval) | Melanomas found | False alarms |
 |---|---|---|---|---|
@@ -45,74 +45,74 @@ Test set (4,630 images, 82 melanomas), once:
 | E6: BCE, then AUC-margin loss | 0.187 (0.113 to 0.289) | 0.883 (0.845 to 0.915) | 61 of 82 | 958 |
 | E0: plain BCE | 0.154 (0.092 to 0.237) | 0.870 (0.829 to 0.905) | 62 of 82 | 1,002 |
 
-More details are in `results/test/summary.md`.
+`results/test/summary.md` has more details.
 
 ## The decisions we made
 
 **Data and splits**
 
-- **256 px images.** The full dataset is about 108 GB. The resized one is 792 MB, so we could download it in every Colab session.
-- **All images of one patient stay together.** Otherwise the network could recognise the person instead of the lesion.
-- **A locked test set from the start (14%).** We wanted one fair test at the end that never influenced any choice.
-- **Inner validation (20% of the training folds).** We needed data to choose the best epoch and the settings.
-- **The inner split is saved in a file.** A new scikit-learn version gave a different split with the same seed.
+- **256 px images.** The resized dataset is 792 MB, which let us download it in each Colab session. The full one is about 108 GB.
+- **All images of one patient stay together.** If they were spread out, the network could learn to recognise the person and not the lesion.
+- **A locked test set from the start (14%).** This gives us a single fair test at the end, which had no influence on any choice.
+- **Inner validation (20% of the training folds).** The best epoch and the settings have to be chosen on some data, and this is that data.
+- **The inner split is saved in a file.** With a newer scikit-learn version, the same seed produced another split.
 
 **How we score**
 
-- **AUPRC as the main score.** With 1.8% melanomas, a network that always says benign gets 98% accuracy. AUPRC shows if melanomas are ranked high.
-- **False alarms to find 50% and 80% of the melanomas.** It is easy to understand and does not depend on the threshold.
-- **Rules before results.** The differences are small and the folds differ a lot, so we wrote our rule first. Then we could not just pick what looked good.
-- **We save predictions, not models.** Models are big. With the predictions we can calculate any metric later without training again.
+- **AUPRC as the main score.** Only 1.8% are melanomas, so always answering benign already gives 98% accuracy. AUPRC tells us whether the melanomas get high ranks.
+- **False alarms to find 50% and 80% of the melanomas.** This number is easy to grasp, and no threshold is involved.
+- **Rules before results.** We wrote the rule down first, because the differences are small and the folds vary a lot. That way we could not simply choose what looked good.
+- **We save predictions, not models.** A model takes a lot of space. From the predictions, any metric can be computed later with no new training.
 
 **Training**
 
-- **ResNet-18.** It is small and fast, so 40 runs were possible.
-- **Frozen and fully fine-tuned.** Kang et al. suggest these tricks mainly act on the last layer, so we tested both.
-- **8 epochs.** A pilot with 12 epochs on fold 0 did not do better. We deleted that run with the other pilots on 5 October, so it is only in the git history.
-- **We keep the epoch with the best inner validation AUROC.** The loss differs between the setups, so it cannot be compared.
-- **Augmentation `light`.** Without augmentation the network memorised the training images. All augmented versions were close. `light` was best on both folds and does not change the colour, which matters for melanoma. More tests would not have separated them, so we stopped.
+- **ResNet-18.** Being small and fast, it made 40 runs possible.
+- **Frozen and fully fine-tuned.** According to Kang et al., these tricks mostly affect the last layer, which is why we ran both.
+- **8 epochs.** On fold 0, a pilot with 12 epochs was not better. That run was deleted on 5 October together with the other pilots, and now exists only in the git history.
+- **We keep the epoch with the best inner validation AUROC.** Each setup has its own loss, which makes the loss values impossible to compare.
+- **Augmentation `light`.** With no augmentation, the network memorised its training images. The augmented versions all scored close to each other. `light` came out best on both folds, and it leaves the colour alone, which is important for melanoma. We stopped there, since more tests would not have told the versions apart.
 
 **The tricks**
 
-- **E1: `pos_weight` 21.** A higher weight finds more melanomas but gives more false alarms. We went up as long as one extra melanoma cost at most about 10 false alarms. From 15 to 21 it cost about 7, from 21 to 27 about 19.
-- **E2: 15% malignant per batch.** 15% and 20% were in the top 3 on every fold, and 15% had the fewest false alarms. High shares repeat each melanoma many times, so the network memorises them. We skipped 16-19%, because we wanted to start the grid.
-- **E3: `gamma` 2, no `alpha`.** `alpha` only moved the scores and lowered AUPRC, and it overlaps with E1.
-- **E5: E2 and E3 together.** We wanted to see if they help when combined. They did not.
-- **E6: AUC-margin loss.** The tricks only moved the threshold, so we tried a loss that rewards ranking. It helped a little.
+- **E1: `pos_weight` 21.** Raising the weight finds more melanomas and also gives more false alarms. We kept raising it while each extra melanoma cost no more than about 10 false alarms. The cost was about 7 going from 15 to 21, and about 19 going from 21 to 27.
+- **E2: 15% malignant per batch.** On every fold, 15% and 20% were among the 3 best, and 15% gave the fewest false alarms. With high shares, every melanoma is repeated many times and the network memorises them. To get started on the grid, we left 16-19% untested.
+- **E3: `gamma` 2, no `alpha`.** All `alpha` did was shift the scores and lower AUPRC. It also overlaps with E1.
+- **E5: E2 and E3 together.** The idea was to check whether the two help in combination. They did not.
+- **E6: AUC-margin loss.** Because the tricks only moved the threshold, we tried a loss that rewards good ranking. It gave a small gain.
 
 **The extension**
 
-- **Change one thing at a time.** Then we know what caused a difference. E5 did not pass our rule, so the base is E0.
-- **384 px and EfficientNet-B0.** The ISIC 2020 winners used larger images and this network family. Neither passed our rule.
-- **ISIC 2019.** E2 repeats the same melanomas, so we wanted real new ones. We only use it for training, so the numbers can still be compared. Only melanoma counts as 1, because that is what ISIC 2020 labels.
-- **Duplicate check before using ISIC 2019.** The same photo in training and test would make our results look too good. We removed 1,601 images. We chose a loose limit, because it only costs a few training images.
-- **PanDerm.** It is pretrained on skin images instead of ImageNet. We tried it frozen first, because that is cheap. It passed, so we also fine-tuned it.
-- **Scoring without Queensland and Sydney.** PanDerm may have seen those images in its pretraining. It still won without them.
-- **Age, sex and body site.** The winners used this. We left out images per patient and file size, because they show which dataset an image comes from. It did not help our best model.
-- **Patient context ("ugly duckling"): not done.** The challenge organisers found it did not improve results (Kurtansky et al.).
-- **Longer training.** We tested 50 epochs on fold 0 to see if 8 was too short. Colab stopped the run after 29 epochs. The network already knew its training images perfectly by epoch 24, inner validation peaked at epoch 10, and the held-out AUPRC (0.309) was below our 8-epoch run (0.333). So it was not worth continuing.
+- **Change one thing at a time.** This shows us what caused each difference. The base is E0, since E5 did not pass our rule.
+- **384 px and EfficientNet-B0.** Larger images and this network family were used by the ISIC 2020 winners. Our rule was not passed by either.
+- **ISIC 2019.** E2 only repeats melanomas we already have, and we wanted new real ones. It is used for training only, which keeps the numbers comparable. Melanoma alone counts as 1, since that is what ISIC 2020 labels.
+- **Duplicate check before using ISIC 2019.** If one photo were in both training and test, our results would look better than they are. The check removed 1,601 images. The limit is loose on purpose, since the only cost is a few training images.
+- **PanDerm.** Its pretraining used skin images, not ImageNet. The frozen version came first because it is cheap. When it passed, we fine-tuned it too.
+- **Scoring without Queensland and Sydney.** Those images may have been in PanDerm's pretraining. Leaving them out did not change the winner.
+- **Age, sex and body site.** The winners used these. Images per patient and file size were left out, since they reveal the dataset an image belongs to. The metadata did not improve our best model.
+- **Patient context ("ugly duckling"): not done.** According to the challenge organisers, it did not improve results (Kurtansky et al.).
+- **Longer training.** To see whether 8 epochs was too short, we ran 50 epochs on fold 0, and Colab stopped the run after 29. By epoch 24 the network fitted its training images perfectly, while inner validation had peaked at epoch 10. The held-out AUPRC was 0.309, lower than the 0.333 of our 8-epoch run. Continuing was therefore not worth it.
 
 **The test set**
 
-- **Three models only.** Our best model, the baseline, and E6, the only change of loss or sampling that passed our rule.
-- **Trained on all dev images, last epoch kept.** No validation data is left. The fold runs peaked at epochs 5-7.
-- **Threshold that finds 80% of the melanomas.** We want to catch most melanomas. "Best F1" did not carry over from inner validation (15-44% found), but "find 80%" did (74-86%).
+- **Three models only.** They are our best model, the baseline, and E6, which was the only loss or sampling change to pass our rule.
+- **Trained on all dev images, last epoch kept.** There is no validation data left to pick an epoch with. In the fold runs the best epoch was 5-7.
+- **Threshold that finds 80% of the melanomas.** The goal is to catch most melanomas. "Find 80%" carried over from inner validation (74-86% found), and "best F1" did not (15-44%).
 
 **What we know is not perfect**
 
-- **We chose the best model on the held-out folds.** So 0.322 is a bit too high. The test score, 0.291, is the fair one.
-- **One seed per run.** We did not have GPU time for more. The small differences between the tricks may be noise.
-- **The learning rates are not tuned.** We used 1e-3 (frozen) and 1e-4 (full) from the start, and PanDerm's own value scaled to our batch size.
-- **E6 trains longer.** It has 4 extra epochs, so 12 in total.
-- **Duplicates inside ISIC 2020.** We only built the hash check after the grid, for ISIC 2019. It found 32 pairs across our splits with the same hash, 7 of them with the test set, all benign. Without those 7 test images the scores do not change.
+- **We chose the best model on the held-out folds.** This makes 0.322 somewhat too high. The fair number is the test score, 0.291.
+- **One seed per run.** There was not enough GPU time for more. Noise could explain the small differences between the tricks.
+- **The learning rates are not tuned.** From the start we used 1e-3 (frozen) and 1e-4 (full), and for PanDerm its own value scaled to our batch size.
+- **E6 trains longer.** With its 4 extra epochs it gets 12 in total.
+- **Duplicates inside ISIC 2020.** The hash check was built after the grid, for ISIC 2019. Across our splits it found 32 pairs with the same hash, all benign, and 7 of them involve the test set. The scores stay the same when those 7 test images are removed.
 
 ## How we worked
 
-We kept all code in one GitHub repository and trained in Google Colab, because Colab has a GPU. Each notebook got the newest code from GitHub and pushed the results back when a run was done. Colab often stops, so this meant finished runs were never lost, and every run is logged with its settings.
+All code lived in one GitHub repository, and training was done in Google Colab for its GPU. A notebook pulled the latest code from GitHub and, when a run was done, pushed the results back. Colab stops often, and this way no finished run was lost and each run is logged together with its settings.
 
-- Inside a run, we only used inner validation to choose things.
-- We used the held-out folds to compare setups.
-- We used the test set once, at the end (`results/test/protocol.md`).
+- Within a run, choices were made on inner validation only.
+- Setups were compared on the held-out folds.
+- The test set was used one time, at the end (`results/test/protocol.md`).
 
 ## The setups
 
@@ -126,7 +126,7 @@ We kept all code in one GitHub repository and trained in Google Colab, because C
 | E5 | E2 and E3 together | as above |
 | E6 | BCE, then AUC-margin loss | 8 + 4 epochs |
 
-All use ResNet-18 from ImageNet, 8 epochs, batch size 64 and the `light` augmentation.
+Every setup uses ResNet-18 from ImageNet, 8 epochs, batch size 64 and the `light` augmentation.
 
 ## What is in this repo
 
@@ -139,17 +139,16 @@ results/     runs/     the grid
              tuning/   our tests of settings and augmentation
              m12/      the extension
              test/     the final models, scores and protocol
-             figures/  figures from the notebooks
              results.csv  scores of E0-E3
 report/      make_report_figs.py, the script that makes the figures of the report
 requirements.txt  the Python packages
 ```
 
-Each run folder has `config.json` (settings), `history.csv` (per epoch) and `preds.csv` (predictions).
+A run folder contains `config.json` (settings), `history.csv` (one row per epoch) and `preds.csv` (predictions).
 
 ## The data
 
-The images are not included.
+The repo does not contain the images.
 
 | Data | Where |
 |---|---|
@@ -164,13 +163,13 @@ kaggle datasets download -d cdeotte/jpeg-melanoma-256x256
 
 ## How to check our work
 
-Nothing needs to be trained. All results are saved in `results/`.
+No training is needed, since every result is saved in `results/`.
 
-- `notebooks/G10_analysis.ipynb` makes the grid tables and figures. Start Jupyter in the `notebooks` folder. No GPU or images needed.
-- `results/test/summary.md` has the test set scores.
-- `python report/make_report_figs.py . figures` makes the figures of the report from `results/`. It needs `torch` and `torchmetrics`, but no GPU and no images.
+- `notebooks/G10_analysis.ipynb` builds the tables and figures of the grid. Start Jupyter from the `notebooks` folder. It needs no GPU and no images.
+- The test set scores are in `results/test/summary.md`.
+- `python report/make_report_figs.py . figures` builds the report figures from `results/`. `torch` and `torchmetrics` must be installed, but no GPU or images are needed.
 
-The other notebooks show how we trained. They need our GitHub repository, so they cannot run from these files.
+The remaining notebooks show how the training was done. They depend on our GitHub repository and therefore cannot be run from these files.
 
 | Notebook | What it does |
 |---|---|
@@ -185,7 +184,7 @@ The other notebooks show how we trained. They need our GitHub repository, so the
 
 ## Sources
 
-Code from other people names its source in a comment. This is the full list.
+Where we use code from others, a comment names the source. The full list is below.
 Comments like `# Written with AI (Claude).` mark the more complex parts written with AI.
 
 **Code we adapted**
@@ -193,7 +192,7 @@ Comments like `# Written with AI (Claude).` mark the more complex parts written 
 | Where | Source | Licence |
 |-------|--------|---------|
 | `models.py`; training loop and augmentation base in `train.py`, `data.py` | S. Chilamkurthy, [Transfer Learning for Computer Vision Tutorial](https://docs.pytorch.org/tutorials/beginner/transfer_learning_tutorial.html) ([code](https://github.com/pytorch/tutorials/blob/main/beginner_source/transfer_learning_tutorial.py)) | BSD-3-Clause |
-| `ISICDataset`, `set_seed`, `val_epoch` / `predict`, fold handling, best epoch by AUROC, augmentation steps `geo`–`cutout` (operations and strengths) | Ha, Liu & Liu (2020), [ISIC 2020 1st-place solution](https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution), [paper](https://arxiv.org/abs/2010.05351) | MIT |
+| `ISICDataset`, `set_seed`, `val_epoch` / `predict`, fold handling, best epoch by AUROC, augmentation steps `geo` to `cutout` (operations and strengths) | Ha, Liu & Liu (2020), [ISIC 2020 1st-place solution](https://github.com/haqishen/SIIM-ISIC-Melanoma-Classification-1st-Place-Solution), [paper](https://arxiv.org/abs/2010.05351) | MIT |
 | `ece` in `eval.py` | G. Pleiss, [temperature_scaling](https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py), code for Guo et al. (2017) | MIT |
 | Balanced sampler weights in `data.py` | ptrblck, PyTorch forum, [How to handle imbalanced classes](https://discuss.pytorch.org/t/how-to-handle-imbalanced-classes/11264) | forum post |
 | Metadata features and network in `meta.py`; reading ISIC 2019 in `isic2019.py` | Ha, Liu & Liu (2020), same repository (`get_meta_data`, `Effnet_Melanoma`, `get_df`) | MIT |
@@ -202,7 +201,7 @@ Comments like `# Written with AI (Claude).` mark the more complex parts written 
 
 **Course material**
 
-Comments like `# Based on lab 2` or `# See also lecture 6, Code 5` refer to the labs and lecture notes in
+Comments such as `# Based on lab 2` or `# See also lecture 6, Code 5` point to the labs and lecture notes of
 [Deep Learning for Visual Recognition 2026](https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
 the training loop (lecture 2, Lab 2), BCE loss (lectures 2 and 3), ResNet-18 transfer learning (lectures 4 and 7),
 Dataset pattern and duplicate check (Lab 3), metrics (bonus lecture, week 4), optimisers, schedules, augmentation and

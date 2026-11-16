@@ -1,16 +1,16 @@
-"""PanDerm, frozen and fully fine-tuned.
+"""PanDerm, as a frozen model and with full fine-tuning.
 
-PanDerm (Yan et al., 2025, Nature Medicine, https://arxiv.org/abs/2410.15038) is a ViT
-pretrained on about 2 million skin images. We use PanDerm_Base (ViT-B/16).
+PanDerm (Yan et al., 2025, Nature Medicine, https://arxiv.org/abs/2410.15038) is a ViT that
+was pretrained on roughly 2 million skin images. Our version is PanDerm_Base (ViT-B/16).
 Code and weights: https://github.com/SiyuanYan1/PanDerm
   - model: classification/models/modeling_finetune.py
   - loading and transform: classification/models/builder.py
   - linear probe: panderm_model/downstream/eval_features/linear_probe.py
-    We use scikit-learn's LogisticRegression:
+For the linear probe we use scikit-learn's LogisticRegression:
     https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html
 
-PanDerm may have seen the Queensland images in ISIC 2020 (see check_institutions.py),
-so we also score without them (`score_without`).
+The Queensland images in ISIC 2020 may have been part of PanDerm's pretraining (see
+check_institutions.py). For that reason we also score with those images left out (`score_without`).
 """
 from pathlib import Path
 import importlib.util
@@ -31,7 +31,7 @@ from sklearn.preprocessing import StandardScaler
 # PanDerm code and weights: CC-BY-NC-ND 4.0 licence (see their README).
 from data import inner_split
 
-# PanDerm's eval transform (builder.get_eval_transforms). Note std 0.228, as in their code.
+# The eval transform of PanDerm (builder.get_eval_transforms). The std of 0.228 is copied from their code.
 TRANSFORM = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -43,29 +43,29 @@ C_GRID = [1e-4, 1e-3, 1e-2, 1e-1, 1.0]
 
 # Adapted from the Python docs: https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
 def _modeling(panderm_repo):
-    """Loads PanDerm's model code from the clone."""
+    """Imports the PanDerm model code from the cloned repo."""
     if "panderm_modeling" in sys.modules:
         return sys.modules["panderm_modeling"]
     path = Path(panderm_repo) / "classification" / "models" / "modeling_finetune.py"
     spec = importlib.util.spec_from_file_location("panderm_modeling", path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module     # timm's @register_model looks the module up here
+    sys.modules[spec.name] = module     # this is where timm's @register_model searches for the module
     spec.loader.exec_module(module)
     return module
 
 
 # The key clean-up and the missing-weights check were written with AI (Claude).
 def _load_weights(model, checkpoint):
-    """Copies the pretrained weights into the model and checks that none are missing."""
+    """Puts the pretrained weights into the model and makes sure that no weight is missing."""
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     for key in ("model", "state_dict"):
         if isinstance(state, dict) and key in state:
             state = state[key]
-    # the file may name the weights "module.x" or "encoder.x"; our model calls them "x"
+    # in the file the weights can be named "module.x" or "encoder.x", and in our model they are "x"
     state = {key.replace("module.", "").replace("encoder.", ""): value for key, value in state.items()}
     state = {key: value for key, value in state.items() if not key.startswith("head.")}
     result = model.load_state_dict(state, strict=False)
-    # head: ours, new. pos_embed: fixed sin-cos values built in the code, not learned.
+    # head: our own new layer. pos_embed: fixed sin-cos values that the code builds, so they are not learned.
     missing = [key for key in result.missing_keys if not key.startswith("head.") and key != "pos_embed"]
     n_found = len(model.state_dict()) - len(result.missing_keys)
     print(f"PanDerm weights: {n_found} tensors loaded, {len(missing)} encoder tensors missing, "
@@ -74,7 +74,7 @@ def _load_weights(model, checkpoint):
 
 
 def load_panderm(panderm_repo, checkpoint, device):
-    """PanDerm_Base, frozen, giving features."""
+    """Frozen PanDerm_Base that returns features."""
     model = _modeling(panderm_repo).panderm_base_patch16_224()
     _load_weights(model, checkpoint)
     # Based on lab 3 (nn.Identity to get the features).
@@ -83,14 +83,14 @@ def load_panderm(panderm_repo, checkpoint, device):
 
 
 # ---------------------------------------------------------------------------
-# Full fine-tuning. The recipe is from PanDerm's own script (classification/run_class_finetuning.py):
+# Full fine-tuning. We took the recipe from PanDerm's own script (classification/run_class_finetuning.py):
 # AdamW, weight decay 0.05, layer decay 0.65, drop_path 0.2, cosine schedule with warm-up.
-# We changed: 8 epochs (not 50), warm-up 1, batch 64 with lr 2.5e-4 (Goyal et al. 2017,
+# Our changes: 8 epochs where they have 50, warm-up 1, batch 64 with lr 2.5e-4 (Goyal et al. 2017,
 # https://arxiv.org/abs/1706.02677), plain BCE, and our "light" augmentation.
 # Layer-wise decay: Bao et al. 2022 (BEiT), https://arxiv.org/abs/2106.08254
 # ---------------------------------------------------------------------------
 def build_finetune(panderm_repo, checkpoint, drop_path=0.2):
-    """PanDerm_Base for fine-tuning, with one output."""
+    """PanDerm_Base with a single output, ready for fine-tuning."""
     model = _modeling(panderm_repo).panderm_base_patch16_224_finetune(
         pretrained=False, num_classes=1, drop_rate=0.0, drop_path_rate=drop_path,
         attn_drop_rate=0.0, drop_block_rate=None, use_mean_pooling=False,
@@ -111,36 +111,36 @@ def _layer_id(name, n_layers):
 
 # See also lecture 7, Code 1.
 def layer_decay_groups(model, weight_decay=0.05, layer_decay=0.65):
-    """Lower learning rates for earlier layers. Adapted from get_parameter_groups and LayerDecayValueAssigner (same file)."""
+    """Earlier layers get lower learning rates. Adapted from get_parameter_groups and LayerDecayValueAssigner (same file)."""
     n_layers = len(model.blocks)
     groups = {}
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        # inside meta.WithMeta the ViT is `backbone`; its metadata network and head count as the top
+        # in meta.WithMeta the ViT is called `backbone`, and its metadata network and head are treated as the top
         name = name[len("backbone."):] if name.startswith("backbone.") else name
         no_decay = param.ndim == 1 or name.endswith(".bias") or name in ("cls_token", "pos_embed")
         layer = _layer_id(name, n_layers)
         key = (layer, no_decay)
         if key not in groups:
             groups[key] = {"params": [], "weight_decay": 0.0 if no_decay else weight_decay,
-                           "lr_scale": layer_decay ** (n_layers + 1 - layer)}   # earlier layer = smaller
+                           "lr_scale": layer_decay ** (n_layers + 1 - layer)}   # smaller for earlier layers
         groups[key]["params"].append(param)
     return list(groups.values())
 
 
 # See also lecture 6, Code 2. PanDerm's version comes from BEiT.
 def cosine_lr(base, final, epochs, steps_per_epoch, warmup_epochs=1):
-    """Warm-up, then cosine decay. Adapted from cosine_scheduler (PanDerm classification/furnace/utils.py)."""
+    """A warm-up followed by cosine decay. Adapted from cosine_scheduler (PanDerm classification/furnace/utils.py)."""
     warmup_steps = int(warmup_epochs * steps_per_epoch)
     total_steps = epochs * steps_per_epoch
-    warmup = np.linspace(0, base, warmup_steps, endpoint=False)     # 0 up to base
+    warmup = np.linspace(0, base, warmup_steps, endpoint=False)     # from 0 up to base
     after = np.arange(total_steps - warmup_steps)
     cosine = final + 0.5 * (base - final) * (1 + np.cos(np.pi * after / max(len(after), 1)))
     return np.concatenate([warmup, cosine])
 
 
-# only images, we don't need labels for the features
+# images only, since the features need no labels
 class _Images(Dataset):
     def __init__(self, paths):
         self.paths = list(paths)
@@ -152,10 +152,10 @@ class _Images(Dataset):
         return TRANSFORM(Image.open(self.paths[index]).convert("RGB"))
 
 
-# runs every image through panderm once and keeps the features
+# sends each image through panderm one time and stores the features
 @torch.no_grad()
 def extract(model, df, device, batch_size=128, workers=2):
-    """One 768-number feature per image."""
+    """A feature of 768 numbers for each image."""
     loader = DataLoader(_Images(df.path), batch_size=batch_size, num_workers=workers)
     features, start = [], time.time()
     for batch, images in enumerate(loader):
@@ -170,25 +170,25 @@ def extract(model, df, device, batch_size=128, workers=2):
 
 # Written with AI (Claude). See also lecture 4, Code 13.
 def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=None):
-    """Trains the linear classifier for one fold. C is chosen on inner validation."""
+    """Fits the linear classifier of one fold, with C picked on inner validation."""
     start = time.time()
-    row_of = pd.Series(np.arange(len(dev)), index=dev.image_name)   # image name -> row in feats
+    row_of = pd.Series(np.arange(len(dev)), index=dev.image_name)   # maps an image name to its row in feats
     train, val = inner_split(dev, fold, splits_dir)
     held = dev[dev.fold == fold]
     X = {part: feats[row_of[df.image_name].values]
          for part, df in (("train", train), ("val", val), ("held", held))}
     y_train = train.target.values
     tag = "panderm"
-    if extra is not None:                    # extra = (features, targets) of ISIC 2019
+    if extra is not None:                    # extra holds the (features, targets) of ISIC 2019
         X["train"] = np.concatenate([X["train"], extra[0]])
         y_train = np.concatenate([y_train, extra[1]])
         tag = "panderm_isic2019"
 
-    # scale the features with the training mean and std
+    # the features are scaled with the mean and std of the training set
     scaler = StandardScaler().fit(X["train"])
     X = {part: scaler.transform(features) for part, features in X.items()}
 
-    # try each C and keep the one with the best inner validation AUROC
+    # go through the values of C and keep the one whose inner validation AUROC is best
     history, best = [], None
     for C in C_GRID:
         clf = LogisticRegression(C=C, max_iter=3000).fit(X["train"], y_train)
@@ -224,9 +224,9 @@ def probe_fold(feats, dev, fold, splits_dir, runs_dir, extra_cfg=None, extra=Non
     return out
 
 
-# same score but without one hospital, for the leakage check
+# the same score with one hospital left out, used for the leakage check
 def score_without(run_dir, attribution_csv, institution="Queensland"):
-    """AUPRC and AUROC with and without one institution."""
+    """AUPRC and AUROC, both with one institution included and with it left out."""
     preds = pd.read_csv(Path(run_dir) / "preds.csv")
     held = preds[preds.split == "held_fold"].merge(
         pd.read_csv(attribution_csv)[["image_name", "attribution"]],

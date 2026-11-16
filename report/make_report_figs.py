@@ -1,14 +1,15 @@
-"""Makes the figures of the report from the saved results. Nothing is trained.
+"""Builds the report figures from the saved results. No training happens here.
 
 Written with AI (Claude). The plotting is the code from the course labs
 (https://github.com/klaverhenrik/Deep-Learning-for-Visual-Recognition-2026):
   - Lab 4a (lab_solutions/Lab4a_ImageClassification_Solution.ipynb): torchmetrics' .plot()
     for confusion matrices and precision-recall curves, and the matplotlib loss curves.
-Our changes: several models in one figure (ax=...), one precision-recall curve per model
-instead of one per class, AUROC instead of accuracy, and the test threshold from our protocol.
+What we changed: several models share one figure (ax=...), there is one precision-recall curve
+per model where the lab has one per class, AUROC replaces accuracy, and the test threshold
+is the one from our protocol.
 
 Run:  python report/make_report_figs.py <path to repo> <output folder>
-Only the repo is needed: no GPU and no images.
+The repo is all it needs, so no GPU and no images.
 """
 import json
 import sys
@@ -34,13 +35,13 @@ class_names = ["benign", "malignant"]
 
 
 def held_out(folder, run):
-    """Held-out predictions of all 5 folds together. `run` has {f} where the fold goes."""
+    """The held-out predictions of all 5 folds in one table. In `run`, {f} marks where the fold goes."""
     preds = pd.concat([pd.read_csv(REPO / folder / run.format(f=f) / "preds.csv") for f in range(5)])
     return preds[preds.split == "held_fold"]
 
 
 def to_lab_format(df):
-    """Our preds.csv -> the (y_score, y_true) tensors Lab 4a uses. Column 1 is malignant."""
+    """Turns our preds.csv into the (y_score, y_true) tensors of Lab 4a. Malignant is column 1."""
     p = torch.tensor(df.prob.values, dtype=torch.float32)
     y_score = torch.stack([1 - p, p], dim=1)
     y_true = torch.tensor(df.target.values, dtype=torch.long)
@@ -48,7 +49,7 @@ def to_lab_format(df):
 
 
 def pr_curves(models, ax):
-    """Lab 4a precision-recall curve, one curve per model on the same axes."""
+    """The precision-recall curve of Lab 4a, with one curve for each model on shared axes."""
     names = []
     for name, df in models.items():
         y_score, y_true = to_lab_format(df)
@@ -64,7 +65,7 @@ def pr_curves(models, ax):
 
 
 def confusion_matrix(df, ax, title, threshold=None):
-    """Lab 4a confusion matrix. Without a threshold it is the lab's argmax (= 0.5)."""
+    """The confusion matrix of Lab 4a. With no threshold given, it uses the lab's argmax (= 0.5)."""
     y_score, y_true = to_lab_format(df)
     y_pred = y_score.argmax(dim=1) if threshold is None else (y_score[:, 1] >= threshold).long()
     confmat_metric = MulticlassConfusionMatrix(num_classes=num_classes, normalize="true")
@@ -90,7 +91,7 @@ save(fig, "fig1a_grid_pr")
 
 fig, axes = plt.subplots(2, 3, figsize=(12, 8))
 for ax, (name, df) in zip(axes.flat, grid.items()):
-    confusion_matrix(df, ax, name)          # threshold 0.5
+    confusion_matrix(df, ax, name)          # at threshold 0.5
 plt.tight_layout()
 save(fig, "fig1b_grid_confmat")
 
@@ -113,7 +114,7 @@ runs = {"8 epochs (our setting)": "E0_full_f0_s0_panderm_ft_isic2019",
 fig, all_axes = plt.subplots(2, 2, figsize=(10, 7.5))
 for axes, (title, run) in zip(all_axes, runs.items()):
     h = pd.read_csv(REPO / "results/m12" / run / "history.csv")
-    # train = clean training sample, so it uses the same loss as validation
+    # train is the clean training sample, which means it has the same loss as validation
     history = {"train_loss": h.train_clean_loss, "val_loss": h.val_loss,
                "train_auroc": h.train_clean_auroc, "val_auroc": h.val_auroc}
 
@@ -147,7 +148,7 @@ save(fig, "fig4a_test_pr")
 
 fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 for ax, (name, (key, _)) in zip(axes, test_runs.items()):
-    # the cut from our protocol: finds 80% of the melanomas in the held-out folds
+    # the cut that our protocol gives: it finds 80% of the melanomas in the held-out folds
     threshold = summary["protocol"]["models"][key]["threshold_80"]
     confusion_matrix(test[name], ax, name, threshold)
 plt.tight_layout()
