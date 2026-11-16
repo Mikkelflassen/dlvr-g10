@@ -165,7 +165,7 @@ kaggle datasets download -d cdeotte/jpeg-melanoma-256x256
 
 No training is needed, since every result is saved in `results/`.
 
-- `notebooks/G10_analysis.ipynb` builds the tables and figures of the grid. Start Jupyter from the `notebooks` folder. It needs no GPU and no images.
+- `notebooks/G10_analysis.ipynb` builds the tables of the grid. Start Jupyter from the `notebooks` folder. It needs no GPU and no images.
 - The test set scores are in `results/test/summary.md`.
 - `python report/make_report_figs.py . figures` builds the report figures from `results/`. `torch` and `torchmetrics` must be installed, but no GPU or images are needed.
 
@@ -176,7 +176,7 @@ The remaining notebooks show how the training was done. They depend on our GitHu
 | `G10_run` | Trains one run |
 | `G10_e2_sampling` | Finds the sampling share for E2 |
 | `G10_grid` | Trains all grid runs |
-| `G10_analysis` | Tables and figures for the grid |
+| `G10_analysis` | Tables for the grid |
 | `G10_isic2019_check` | Removes duplicates from ISIC 2019 |
 | `G10_panderm` | PanDerm as a frozen network |
 | `G10_m12` | The extension |
